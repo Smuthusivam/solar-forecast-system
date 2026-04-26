@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# ─────────────────────────────────────────────
+# Environment variables (never commit secrets)
+# ─────────────────────────────────────────────
+.env
+*.env
+!.env.example
+
+# ─────────────────────────────────────────────
+# ML — saved models and datasets
+# ─────────────────────────────────────────────
+ml_core/saved_models/*.pkl
+ml_core/saved_models/*.json
+ml_core/saved_models/*.bin
+!ml_core/saved_models/.gitkeep
+
+# Raw data uploads (can be large)
+*.csv
+*.xlsx
+*.parquet
+
+# ─────────────────────────────────────────────
+# Database
+# ─────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─────────────────────────────────────────────
+# Frontend (Node)
+# ─────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ─────────────────────────────────────────────
+# OS files
+# ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─────────────────────────────────────────────
+# IDEs
+# ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.swp
+
+# ─────────────────────────────────────────────
+# Logs and temp files
+# ─────────────────────────────────────────────
+*.log
+*.tmp
+*.bak

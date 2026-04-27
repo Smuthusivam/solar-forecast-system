@@ -75,10 +75,17 @@ def _resolve_database_url() -> tuple[str, bool]:
         logger.info("Using cloud database: %s", url.split("@")[-1])  # hide credentials
         return url, False
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Storage paths
+# ─────────────────────────────────────────────────────────────────────────────
     # Local SQLite fallback
-    # __file__ = backend/app/database.py  →  dirname × 2 = backend/
+
     backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    db_path     = os.path.join(backend_dir, "solar_forecast.db")
+    db_path     = os.path.join(backend_dir, "storage", "db", "solar_forecast.db")
+
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
     sqlite_url  = f"sqlite:///{db_path}"
     logger.info("DATABASE_URL not set — using SQLite at: %s", db_path)
     return sqlite_url, True

@@ -1,26 +1,17 @@
 """
 upload.py — POST /api/upload
-
-Receives a CSV file, runs AI column detection + preprocessing,
-stores the result in memory (session store), returns metadata
-to the frontend for preview before the user triggers a forecast run.
-
-Session store:
-  A simple in-memory dict keyed by session_id (UUID).
-  Stores the clean DataFrame + detection metadata so the forecast
-  router doesn't need to re-upload and re-preprocess the file.
-  
-  Sessions expire after 2 hours to prevent memory leaks.
-  For a thesis demo this is perfectly sufficient — no Redis needed.
 """
 
 from __future__ import annotations
 
+import io
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+import pandas as pd
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.models.schemas import DetectedColumns, DetectionMode, UploadResponse
@@ -31,31 +22,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Storage paths
+# ─────────────────────────────────────────────────────────────────────────────
+_BACKEND_DIR = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+_UPLOADS_DIR = os.path.join(_BACKEND_DIR, "storage", "uploads")
+os.makedirs(_UPLOADS_DIR, exist_ok=True)
+
+def get_storage_dirs() -> dict[str, str]:
+    return {
+        "uploads": _UPLOADS_DIR,
+    }
+
+
+def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
+    """Save raw CSV to storage/uploads/<session_id[:8]>_<filename>"""
+    safe_name = f"{session_id[:8]}_{filename}"
+    filepath  = os.path.join(_UPLOADS_DIR, safe_name)
+    with open(filepath, "wb") as f:
+        f.write(file_bytes)
+    logger.info("CSV saved: %s", filepath)
+    return filepath
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # In-memory session store
 # ─────────────────────────────────────────────────────────────────────────────
 
 SESSION_TTL_HOURS = 2
 
-# Structure:
-# {
-#   session_id: {
-#     "df":             pd.DataFrame,
-#     "detected_cols":  dict,
-#     "detection_mode": str,
-#     "filename":       str,
-#     "meta":           dict,
-#     "expires_at":     datetime,
-#   }
-# }
 _sessions: dict[str, dict[str, Any]] = {}
 
 
 def get_session(session_id: str) -> dict[str, Any]:
-    """
-    Retrieve a session by ID.
-    Raises 404 if not found, 410 if expired.
-    Called by forecast, anomaly, and export routers.
-    """
     session = _sessions.get(session_id)
 
     if not session:
@@ -83,7 +83,6 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 def _purge_expired_sessions() -> None:
-    """Remove expired sessions to prevent memory growth."""
     now     = datetime.utcnow()
     expired = [sid for sid, s in _sessions.items() if now > s["expires_at"]]
     for sid in expired:
@@ -98,20 +97,6 @@ def _purge_expired_sessions() -> None:
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_csv(file: UploadFile = File(...)):
-    """
-    Upload a CSV file and detect its column structure.
-
-    Steps:
-      1. Read file bytes
-      2. Quick parse to get column names + sample rows
-      3. Send to AI detector (Claude API)
-      4. Run full preprocessing pipeline
-      5. Store clean DataFrame in session store
-      6. Return metadata + preview to frontend
-
-    The frontend shows the preview + detection result and lets the
-    user confirm before triggering POST /api/forecast/run.
-    """
 
     # ── Validate file type ────────────────────────────────────────────────────
     if not file.filename.endswith(".csv"):
@@ -139,14 +124,11 @@ async def upload_csv(file: UploadFile = File(...)):
 
     logger.info("Upload received: %s (%d bytes)", file.filename, len(file_bytes))
 
-    # ── Quick parse for column detection ─────────────────────────────────────
+    # ── Quick parse for column detection ──────────────────────────────────────
     try:
-        import io
-        import pandas as pd
         raw_df      = pd.read_csv(io.BytesIO(file_bytes), nrows=5)
         columns     = list(raw_df.columns)
         sample_rows = raw_df.to_dict(orient="records")
-        total_rows  = sum(1 for _ in io.BytesIO(file_bytes)) - 1  # subtract header
     except Exception as exc:
         raise HTTPException(
             status_code=422,
@@ -174,9 +156,9 @@ async def upload_csv(file: UploadFile = File(...)):
     # ── Preprocessing ─────────────────────────────────────────────────────────
     try:
         df, meta = preprocess(
-            file_bytes      = file_bytes,
-            detected_cols   = detection["detected"],
-            detection_mode  = detection["detection_mode"],
+            file_bytes     = file_bytes,
+            detected_cols  = detection["detected"],
+            detection_mode = detection["detection_mode"],
         )
     except ValueError as exc:
         raise HTTPException(
@@ -188,15 +170,18 @@ async def upload_csv(file: UploadFile = File(...)):
             },
         )
 
-    # ── Store session ─────────────────────────────────────────────────────────
-    _purge_expired_sessions()   # housekeeping
-
+    # ── Generate session ID + save file to disk ───────────────────────────────
+    _purge_expired_sessions()
     session_id = str(uuid.uuid4())
+    filepath   = _save_upload(session_id, file.filename, file_bytes)
+
+    # ── Store session ─────────────────────────────────────────────────────────
     _sessions[session_id] = {
         "df":             df,
         "detected_cols":  detection["detected"],
         "detection_mode": detection["detection_mode"],
         "filename":       file.filename,
+        "filepath":       filepath,        # ← path to raw CSV on disk
         "meta":           meta,
         "expires_at":     datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS),
     }

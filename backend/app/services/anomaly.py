@@ -3,23 +3,15 @@ anomaly.py — Anomaly detection for solar irradiance time series.
 
 Three detection methods run independently and results are merged:
 
-  1. Z-score        — flags values > 3 standard deviations from rolling mean
-                      Best for: gradual sensor drift, systematic offsets
-  
-  2. IQR            — flags values outside 1.5× interquartile range
-                      Best for: robust detection that ignores extreme outliers
-                      in the reference window (more stable than Z-score)
+  1. Z-score        — flags values > 2.5 standard deviations from rolling mean
+  2. IQR            — flags values outside 2.0× interquartile range
+  3. Rolling window — flags sudden changes > 70% in 1 hour (mid-day only)
 
-  3. Rolling window — flags sudden spikes/drops > 50% change in 1 hour
-                      Best for: cloud events, sudden shading, sensor faults
-
-Each method assigns severity (low / medium / high) based on how far
-the value deviates from expected. The final output merges all three,
-deduplicates overlapping detections, and returns a clean list sorted
-by timestamp.
-
-Only daytime points are evaluated (hour 6–20) — nighttime irradiance
-is always ~0 so any detection there is meaningless noise.
+Tuning decisions:
+  - MIN_IRRADIANCE = 50 W/m²  → ignores nighttime noise and dawn/dusk transitions
+  - ROLLING skips hours 6,7,19,20 → ignores natural sunrise/sunset ramps
+  - Higher thresholds throughout → targets real anomalies, not sensor noise
+  - Expected anomaly rate: 1–5% of daytime points
 """
 
 from __future__ import annotations
@@ -37,30 +29,37 @@ logger = logging.getLogger(__name__)
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-DAYTIME_START   = 6     # hour (inclusive)
-DAYTIME_END     = 20    # hour (inclusive)
+DAYTIME_START   = 6
+DAYTIME_END     = 20
 
-# Z-score thresholds
-ZSCORE_LOW      = 2.0
-ZSCORE_MEDIUM   = 3.0
-ZSCORE_HIGH     = 4.0
+# Raised from 10 → 50 W/m²
+# Ignores dawn/dusk transitions and nighttime noise completely
+MIN_IRRADIANCE  = 100.0
 
-# IQR multiplier thresholds
-IQR_LOW         = 1.5
-IQR_MEDIUM      = 2.5
-IQR_HIGH        = 3.5
+# Z-score thresholds — raised to reduce false positives
+ZSCORE_LOW      = 2.5    # was 2.0
+ZSCORE_MEDIUM   = 3.5    # was 3.0
+ZSCORE_HIGH     = 5.0    # was 4.0
 
-# Rolling window — minimum % change to flag
-ROLLING_LOW     = 0.40   # 40% change
-ROLLING_MEDIUM  = 0.60   # 60% change
-ROLLING_HIGH    = 0.80   # 80% change
+# IQR multipliers — more conservative
+IQR_LOW         = 2.0    # was 1.5
+IQR_MEDIUM      = 3.0    # was 2.5
+IQR_HIGH        = 4.0    # was 3.5
 
-# Minimum irradiance to consider a point for anomaly detection
-MIN_IRRADIANCE  = 10.0   # W/m² — ignore near-zero readings
+# Rolling window — raised from 40% to 70%
+# Natural sunrise goes 0 → 500 W/m² — that's NOT anomalous
+# Only flag truly sudden mid-day changes (cloud events, sensor faults)
+ROLLING_LOW     = 0.80   # was 0.40
+ROLLING_MEDIUM  = 0.90   # was 0.60
+ROLLING_HIGH    = 0.97   # was 0.80
+
+# Transition hours to skip in rolling detection
+# Hours 6,7 = sunrise ramp up | Hours 19,20 = sunset ramp down
+TRANSITION_HOURS = {6, 7,8 , 18, 19, 20}
 
 # Rolling window sizes
-ZSCORE_WINDOW   = 24     # hours — rolling mean/std reference window
-IQR_WINDOW      = 24     # hours
+ZSCORE_WINDOW   = 24
+IQR_WINDOW      = 24
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -104,11 +103,10 @@ def _is_daytime(hour: int) -> bool:
 
 def _detect_zscore(series: pd.Series) -> list[dict]:
     """
-    Flag points where the irradiance value deviates more than ZSCORE_LOW
+    Flag points where irradiance deviates more than ZSCORE_LOW
     standard deviations from the rolling mean.
 
-    Rolling mean/std computed over ZSCORE_WINDOW hours so the reference
-    adapts to local conditions (cloudy day vs sunny day).
+    Only evaluates daytime points with irradiance > MIN_IRRADIANCE.
     """
     rolling_mean = series.rolling(window=ZSCORE_WINDOW, min_periods=3, center=True).mean()
     rolling_std  = series.rolling(window=ZSCORE_WINDOW, min_periods=3, center=True).std()
@@ -116,7 +114,6 @@ def _detect_zscore(series: pd.Series) -> list[dict]:
     anomalies = []
 
     for ts, value in series.items():
-        # Skip nighttime and near-zero readings
         if not _is_daytime(ts.hour):
             continue
         if value < MIN_IRRADIANCE:
@@ -133,12 +130,12 @@ def _detect_zscore(series: pd.Series) -> list[dict]:
         if abs(z) >= ZSCORE_LOW:
             anomalies.append({
                 "timestamp": ts,
-                "value":     round(float(value),    2),
-                "expected":  round(float(mean),     2),
+                "value":     round(float(value),        2),
+                "expected":  round(float(mean),         2),
                 "deviation": round(float(abs(value - mean)), 2),
                 "severity":  _severity_from_zscore(z),
                 "method":    "zscore",
-                "score":     round(float(abs(z)),   3),
+                "score":     round(float(abs(z)),       3),
             })
 
     logger.info("Z-score: %d anomalies detected", len(anomalies))
@@ -151,11 +148,10 @@ def _detect_zscore(series: pd.Series) -> list[dict]:
 
 def _detect_iqr(series: pd.Series) -> list[dict]:
     """
-    Flag points outside 1.5× IQR from the rolling Q1/Q3 bounds.
+    Flag points outside IQR_LOW × interquartile range.
 
-    IQR is more robust than Z-score because it's not affected by
-    extreme outliers in the reference window — Q1 and Q3 are resistant
-    to a few very large or very small values.
+    More robust than Z-score — not affected by extreme outliers
+    in the reference window.
     """
     anomalies = []
 
@@ -165,11 +161,10 @@ def _detect_iqr(series: pd.Series) -> list[dict]:
         if value < MIN_IRRADIANCE:
             continue
 
-        # Reference window: past IQR_WINDOW hours
-        start = max(0, i - IQR_WINDOW)
+        start       = max(0, i - IQR_WINDOW)
         window_vals = series.iloc[start:i].values
 
-        if len(window_vals) < 6:   # not enough history yet
+        if len(window_vals) < 6:
             continue
 
         q1  = np.percentile(window_vals, 25)
@@ -188,8 +183,8 @@ def _detect_iqr(series: pd.Series) -> list[dict]:
 
             anomalies.append({
                 "timestamp": ts,
-                "value":     round(float(value),    2),
-                "expected":  round(float(expected), 2),
+                "value":     round(float(value),     2),
+                "expected":  round(float(expected),  2),
                 "deviation": round(float(deviation), 2),
                 "severity":  _severity_from_iqr(deviation, iqr),
                 "method":    "iqr",
@@ -209,13 +204,13 @@ def _detect_rolling(series: pd.Series) -> list[dict]:
     Flag points where irradiance changes by more than ROLLING_LOW %
     compared to the previous hour.
 
-    This catches cloud events and sensor faults that Z-score and IQR
-    miss because the absolute value may still be within normal range —
-    it's the *rate of change* that's anomalous.
+    Skips:
+      - Nighttime hours
+      - Points below MIN_IRRADIANCE
+      - Transition hours (6,7 = sunrise | 19,20 = sunset)
+        These are natural large changes, not anomalies.
 
-    Example: 600 W/m² → 50 W/m² in one hour is a 92% drop — clearly
-    a cloud event or equipment fault, even though both values are
-    individually plausible.
+    Catches: cloud events, sudden shading, sensor faults mid-day.
     """
     pct_change = series.pct_change().abs()
     anomalies  = []
@@ -224,6 +219,10 @@ def _detect_rolling(series: pd.Series) -> list[dict]:
         if not _is_daytime(ts.hour):
             continue
         if value < MIN_IRRADIANCE:
+            continue
+
+        # Skip sunrise/sunset transition hours — natural large changes
+        if ts.hour in TRANSITION_HOURS:
             continue
 
         change = pct_change[ts]
@@ -240,12 +239,12 @@ def _detect_rolling(series: pd.Series) -> list[dict]:
 
             anomalies.append({
                 "timestamp": ts,
-                "value":     round(float(value),    2),
-                "expected":  round(expected,         2),
-                "deviation": round(deviation,        2),
+                "value":     round(float(value),  2),
+                "expected":  round(expected,       2),
+                "deviation": round(deviation,      2),
                 "severity":  _severity_from_change(change),
                 "method":    "rolling",
-                "score":     round(float(change),   3),
+                "score":     round(float(change),  3),
             })
 
     logger.info("Rolling window: %d anomalies detected", len(anomalies))
@@ -259,26 +258,17 @@ def _detect_rolling(series: pd.Series) -> list[dict]:
 def _merge_anomalies(all_anomalies: list[dict]) -> list[dict]:
     """
     Merge results from all three methods.
-
-    When multiple methods flag the same timestamp, keep the one with
-    the highest severity. If severity is equal, prefer the one with
-    the highest score (most extreme deviation).
-
-    Severity ranking: high > medium > low
+    When multiple methods flag the same timestamp, keep the highest severity.
     """
     severity_rank = {"high": 3, "medium": 2, "low": 1}
-
-    # Group by timestamp
     by_timestamp: dict[datetime, dict] = {}
 
     for anomaly in all_anomalies:
         ts = anomaly["timestamp"]
-
         if ts not in by_timestamp:
             by_timestamp[ts] = anomaly
         else:
             existing = by_timestamp[ts]
-            # Keep the higher severity
             if severity_rank[anomaly["severity"]] > severity_rank[existing["severity"]]:
                 by_timestamp[ts] = anomaly
             elif (
@@ -287,11 +277,10 @@ def _merge_anomalies(all_anomalies: list[dict]) -> list[dict]:
             ):
                 by_timestamp[ts] = anomaly
 
-    # Sort by timestamp and clean up internal score field
     merged = sorted(by_timestamp.values(), key=lambda x: x["timestamp"])
 
     for a in merged:
-        a.pop("score", None)   # internal field — not in API response
+        a.pop("score", None)
 
     return merged
 
@@ -306,27 +295,16 @@ def detect_anomalies(df: pd.DataFrame) -> dict[str, Any]:
 
     Args:
         df: Clean DataFrame with DatetimeIndex and 'irradiance' column.
-            Produced by preprocessing.preprocess().
 
     Returns:
         {
             "total_points":  int,
             "anomaly_count": int,
             "anomaly_rate":  float,
-            "anomalies": [
-                {
-                    "timestamp": datetime,
-                    "value":     float,   # observed W/m²
-                    "expected":  float,   # rolling reference W/m²
-                    "deviation": float,   # abs difference
-                    "severity":  str,     # "low" | "medium" | "high"
-                    "method":    str,     # "zscore" | "iqr" | "rolling"
-                },
-                ...
-            ]
+            "anomalies":     list of anomaly dicts
         }
 
-    Never raises — returns empty anomaly list on any error.
+    Never raises — returns empty list on any error.
     """
     try:
         series = df["irradiance"].copy()

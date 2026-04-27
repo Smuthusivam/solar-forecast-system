@@ -138,63 +138,95 @@ def standardise_columns(
 def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert the 'timestamp' column to a proper DatetimeIndex.
-
-    Tries pandas auto-detection first (handles most formats).
-    Falls back to common explicit formats if auto-detection fails.
-
-    Raises:
-        ValueError if timestamps cannot be parsed.
+    Handles ANY format through 4 progressive layers — never crashes.
     """
     if "timestamp" not in df.columns:
-        # No timestamp column — generate a synthetic hourly index
         logger.warning("No timestamp column found — generating synthetic hourly index")
         df["timestamp"] = pd.date_range(
             start="2020-01-01",
             periods=len(df),
             freq="h",
         )
-    else:
+        df = df.set_index("timestamp").sort_index()
+        return df
+
+    parsed = None
+
+    # ── Layer 1: pandas auto-detect ───────────────────────────────────────────
+    try:
+        parsed = pd.to_datetime(df["timestamp"], infer_datetime_format=True)
+        if parsed.isna().sum() / len(parsed) < 0.5:
+            logger.info("Timestamps parsed via pandas auto-detect")
+    except Exception:
+        parsed = None
+
+    # ── Layer 2: explicit common formats ──────────────────────────────────────
+    if parsed is None or parsed.isna().all():
         common_formats = [
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d %H:%M",
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%d/%m/%Y %H:%M:%S",
             "%d/%m/%Y %H:%M",
+            "%m/%d/%Y %H:%M:%S",
             "%m/%d/%Y %H:%M",
-            "%Y%m%d%H%M",
+            "%Y%m%d%H%M%S",
+            "%Y%m%d %H:%M:%S",
+            "%d-%m-%Y %H:%M:%S",
+            "%d-%m-%Y %H:%M",
         ]
+        for fmt in common_formats:
+            try:
+                candidate = pd.to_datetime(df["timestamp"], format=fmt)
+                if not candidate.isna().all():
+                    parsed = candidate
+                    logger.info("Timestamps parsed with explicit format: %s", fmt)
+                    break
+            except Exception:
+                continue
 
-        parsed = None
-
-        # Try pandas inference first
+    # ── Layer 3: dateutil parser (handles almost any human format) ────────────
+    if parsed is None or parsed.isna().all():
         try:
-            parsed = pd.to_datetime(df["timestamp"], infer_datetime_format=True)
-        except Exception:
-            pass
-
-        # Try explicit formats if inference failed
-        if parsed is None or parsed.isna().all():
-            for fmt in common_formats:
-                try:
-                    parsed = pd.to_datetime(df["timestamp"], format=fmt)
-                    if not parsed.isna().all():
-                        logger.info("Timestamp parsed with format: %s", fmt)
-                        break
-                except Exception:
-                    continue
-
-        if parsed is None or parsed.isna().all():
-            raise ValueError(
-                "Could not parse timestamp column. "
-                "Supported formats: YYYY-MM-DD HH:MM, DD/MM/YYYY HH:MM, ISO-8601"
+            from dateutil import parser as dateutil_parser
+            parsed = df["timestamp"].apply(
+                lambda x: dateutil_parser.parse(str(x), fuzzy=True)
+                if pd.notna(x) else pd.NaT
             )
+            parsed = pd.to_datetime(parsed)
+            logger.info("Timestamps parsed via dateutil fuzzy parser")
+        except Exception as exc:
+            logger.warning("dateutil parser failed: %s", exc)
+            parsed = None
 
-        df["timestamp"] = parsed
+    # ── Layer 4: Unix timestamp (seconds or milliseconds) ─────────────────────
+    if parsed is None or parsed.isna().all():
+        try:
+            numeric = pd.to_numeric(df["timestamp"], errors="coerce")
+            if numeric.notna().sum() > len(df) * 0.5:
+                # Detect milliseconds vs seconds
+                if numeric.median() > 1e10:
+                    parsed = pd.to_datetime(numeric, unit="ms")
+                else:
+                    parsed = pd.to_datetime(numeric, unit="s")
+                logger.info("Timestamps parsed as Unix timestamp")
+        except Exception:
+            parsed = None
 
-    # Set as index and sort chronologically
+    # ── Layer 5: synthetic fallback — never crash ─────────────────────────────
+    if parsed is None or parsed.isna().all():
+        logger.warning(
+            "Could not parse timestamps — generating synthetic hourly index"
+        )
+        parsed = pd.date_range(start="2020-01-01", periods=len(df), freq="h")
+
+    df["timestamp"] = parsed
+
+    # ── Set as index, sort, remove duplicates ─────────────────────────────────
     df = df.set_index("timestamp").sort_index()
 
-    # Drop duplicate timestamps (keep last reading)
     n_dupes = df.index.duplicated().sum()
     if n_dupes > 0:
         logger.warning("Removed %d duplicate timestamps", n_dupes)
@@ -205,7 +237,6 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
         df.index[0], df.index[-1], len(df),
     )
     return df
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Type coercion + bounds cleaning

@@ -1,8 +1,23 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+
+// Pages (we'll create these files next)
+import Upload from './pages/Upload'
+import Dashboard from './pages/Dashboard'
+import ModelComparison from './pages/ModelComparison'
+import AnomalyReport from './pages/AnomalyReport'
+import History from './pages/History'
+
 function App() {
   return (
-    <div className="bg-blue-500 text-white p-8">
-      <h1 className="text-3xl font-bold">Solar Forecast System</h1>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/"          element={<Upload />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/compare"   element={<ModelComparison />} />
+        <Route path="/anomalies" element={<AnomalyReport />} />
+        <Route path="/history"   element={<History />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 

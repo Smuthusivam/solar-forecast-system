@@ -21,9 +21,9 @@ export async function uploadCSV(file) {
 // ─────────────────────────────────────────
 // 2. RUN FORECAST
 // ─────────────────────────────────────────
-export async function runForecast(datasetId, horizonHours = 24) {
+export async function runForecast(sessionId, horizonHours = 24) {
   const response = await API.post("/api/forecast/run", {
-    dataset_id: datasetId,
+    session_id: sessionId,
     horizon_hours: horizonHours,
   });
   return response.data;
@@ -40,8 +40,8 @@ export async function getModels() {
 // ─────────────────────────────────────────
 // 4. GET ANOMALIES
 // ─────────────────────────────────────────
-export async function getAnomalies(datasetId) {
-  const response = await API.get(`/api/anomaly?dataset_id=${datasetId}`);
+export async function getAnomalies(sessionId) {
+  const response = await API.get(`/api/anomaly?session_id=${sessionId}`);
   return response.data;
 }
 
@@ -56,8 +56,8 @@ export async function getHistory() {
 // ─────────────────────────────────────────
 // 6. EXPORT CSV
 // ─────────────────────────────────────────
-export async function exportCSV(datasetId) {
-  const response = await API.get(`/api/export/csv?dataset_id=${datasetId}`, {
+export async function exportCSV(sessionId) {
+  const response = await API.get(`/api/export/csv?session_id=${sessionId}`, {
     responseType: "blob", // important for file downloads
   });
 
@@ -74,8 +74,8 @@ export async function exportCSV(datasetId) {
 // ─────────────────────────────────────────
 // 7. EXPORT PDF
 // ─────────────────────────────────────────
-export async function exportPDF(datasetId) {
-  const response = await API.get(`/api/export/pdf?dataset_id=${datasetId}`, {
+export async function exportPDF(sessionId) {
+  const response = await API.get(`/api/export/pdf?session_id=${sessionId}`, {
     responseType: "blob",
   });
 

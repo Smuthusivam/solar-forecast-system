@@ -2,7 +2,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ReferenceLine
 } from "recharts";
 
@@ -50,7 +49,7 @@ function ModelComparison() {
     );
   }
 
-  const { per_model, forecast: points, ensemble_metrics, feature_importance } = forecast;
+  const { per_model, forecast: points, ensemble_metrics, ensemble_train_metrics, feature_importance } = forecast;
 
   // ── Build comparison table rows ───────────────────────────────────────────
   const allModels = [
@@ -107,19 +106,6 @@ function ModelComparison() {
       }))
       .filter(d => d.actual != null && d.predicted != null),
   }));
-
-  // ── Radar chart data ─────────────────────────────────────────────────────
-  // Normalise metrics so all fit on radar (higher = better for all)
-  const maxRMSE = Math.max(...allModels.map(m => m.metrics.rmse));
-  const maxMAE  = Math.max(...allModels.map(m => m.metrics.mae));
-  const maxMAPE = Math.max(...allModels.map(m => m.metrics.mape || 0));
-
-  const radarData = [
-    { metric: "R²",        ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat((m.metrics.r2 * 100).toFixed(1))])) },
-    { metric: "RMSE (inv)",  ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat(((1 - m.metrics.rmse / maxRMSE) * 100).toFixed(1))])) },
-    { metric: "MAE (inv)",   ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat(((1 - m.metrics.mae  / maxMAE)  * 100).toFixed(1))])) },
-    { metric: "MAPE (inv)",  ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat(((1 - (m.metrics.mape || 0) / (maxMAPE || 1)) * 100).toFixed(1))])) },
-  ];
 
   // ── Feature importance ────────────────────────────────────────────────────
   const featData = feature_importance
@@ -273,6 +259,119 @@ function ModelComparison() {
         </ResponsiveContainer>
       </Card>
 
+      {/* Individual Predicted vs Actual charts */}
+      <Card title="Individual Model Predictions"
+        subtitle="Each model is shown separately against the actual values">
+        <div className="flex flex-col gap-6">
+          {per_model.map((m) => (
+            <div
+              key={m.model_name}
+              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">
+                    {m.model_name}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                      Train RMSE {m.train_metrics?.rmse.toFixed(2) ?? "—"} W/m² | Predict RMSE {m.metrics.rmse.toFixed(2)} W/m²
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Train MAE {m.train_metrics?.mae.toFixed(2) ?? "—"} W/m² | Predict MAE {m.metrics.mae.toFixed(2)} W/m²
+                    </p>
+                </div>
+                <span
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: MODEL_COLORS[m.model_name] }}
+                />
+              </div>
+
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={perModelChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fontSize: 9 }}
+                    interval={Math.floor(perModelChartData.length / 6)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    label={{ value: "W/m²", angle: -90, position: "insideLeft" }}
+                  />
+                  <Tooltip contentStyle={{ fontSize: 10 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="Actual"
+                    stroke={MODEL_COLORS.Actual}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey={m.model_name}
+                    stroke={MODEL_COLORS[m.model_name]}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ))}
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800">
+                  Ensemble
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Train RMSE {ensemble_train_metrics?.rmse.toFixed(2) ?? "—"} W/m² | Predict RMSE {ensemble_metrics.rmse.toFixed(2)} W/m²
+                </p>
+                <p className="text-xs text-gray-400">
+                  Train MAE {ensemble_train_metrics?.mae.toFixed(2) ?? "—"} W/m² | Predict MAE {ensemble_metrics.mae.toFixed(2)} W/m²
+                </p>
+              </div>
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: MODEL_COLORS.Ensemble }}
+              />
+            </div>
+
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={perModelChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 9 }}
+                  interval={Math.floor(perModelChartData.length / 6)}
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  label={{ value: "W/m²", angle: -90, position: "insideLeft" }}
+                />
+                <Tooltip contentStyle={{ fontSize: 10 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line
+                  type="monotone"
+                  dataKey="Actual"
+                  stroke={MODEL_COLORS.Actual}
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Ensemble"
+                  stroke={MODEL_COLORS.Ensemble}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </Card>
+
       {/* Residual plot */}
       <Card title="Residual Analysis (Actual − Predicted)"
         subtitle="Positive = under-predicted, Negative = over-predicted. Ideal: residuals centred around 0">
@@ -289,25 +388,6 @@ function ModelComparison() {
                 stroke={MODEL_COLORS[m.model_name]} strokeWidth={1.5} dot={false} />
             ))}
           </LineChart>
-        </ResponsiveContainer>
-      </Card>
-
-      {/* Radar chart */}
-      <Card title="Model Radar Chart"
-        subtitle="Higher score = better. RMSE/MAE/MAPE are inverted so all metrics point outward for best model">
-        <ResponsiveContainer width="100%" height={340}>
-          <RadarChart data={radarData}>
-            <PolarGrid />
-            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
-            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 10 }} />
-            {allModels.map(m => (
-              <Radar key={m.model_name} name={m.model_name} dataKey={m.model_name}
-                stroke={MODEL_COLORS[m.model_name]} fill={MODEL_COLORS[m.model_name]}
-                fillOpacity={0.15} strokeWidth={2} />
-            ))}
-            <Legend />
-            <Tooltip />
-          </RadarChart>
         </ResponsiveContainer>
       </Card>
 

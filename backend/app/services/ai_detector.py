@@ -56,11 +56,14 @@ LOW_CONFIDENCE    = 0.50
 
 COLUMN_ALIASES: dict[str, list[str]] = {
     "irradiance": [
-        "ghi", "ghi_wm2", "global_horizontal_irradiance", "solar_radiation",
-        "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
-        "radiation", "rad", "shortwave_radiation", "sw_radiation",
-        "global_radiation", "globalrad", "sr", "rs",
-    ],
+    "ghi", "ghi_wm2", "global_horizontal_irradiance", "solar_radiation",
+    "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
+    "radiation", "rad", "shortwave_radiation", "sw_radiation",
+    "global_radiation", "globalrad", "sr", "rs",
+    # Solar power generation columns
+    "dc_power", "ac_power", "power", "power_output", "solar_power",
+    "active_power", "generated_power", "daily_yield", "yield",
+],
     "temperature": [
         "temp", "temperature", "air_temperature", "tamb", "tmp",
         "temp_c", "temp_f", "ambient_temp", "t_air", "ta", "t2m",
@@ -96,22 +99,10 @@ COLUMN_ALIASES: dict[str, list[str]] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_prompt(columns: list[str], sample_rows: list[dict]) -> str:
-    """
-    Build the prompt sent to Claude.
-
-    We give Claude:
-      1. The column names
-      2. Three sample rows of actual data values
-      3. Clear instructions to return only JSON
-
-    Showing sample values is critical — it lets Claude distinguish between
-    a column named "temp" (could be temporal or temperature) by seeing
-    whether the values are timestamps or numbers like 23.5.
-    """
     col_list   = ", ".join(columns)
     sample_str = json.dumps(sample_rows[:3], indent=2, default=str)
 
-    return f"""You are a data scientist analyzing a solar/weather CSV dataset.
+    return f"""You are a data scientist analyzing a solar energy CSV dataset.
 
 Column names found in the CSV:
 {col_list}
@@ -120,6 +111,13 @@ Sample data (first 3 rows):
 {sample_str}
 
 Your task: identify which column corresponds to each physical variable.
+
+IMPORTANT — irradiance mapping rules:
+- Direct irradiance columns: GHI, ghi, solar_radiation, irradiance, IRRADIATION
+- Solar power output columns also map to irradiance:
+  DC_POWER, AC_POWER, dc_power, ac_power, POWER, power_output
+  These represent solar energy production and should be mapped to "irradiance"
+  if no direct irradiance column exists.
 
 Return ONLY a JSON object with these exact keys:
 {{
@@ -135,7 +133,8 @@ Return ONLY a JSON object with these exact keys:
 }}
 
 Rules:
-- Use null (not "null") if a variable is not present in the dataset
+- Use null (not "null") if a variable is not present
+- If only power output columns exist (DC_POWER, AC_POWER), map the best one to irradiance
 - confidence reflects your overall certainty across all mappings
 - Column names in your response must match exactly as given above
 - Return ONLY the JSON object — no explanation, no markdown, no backticks"""

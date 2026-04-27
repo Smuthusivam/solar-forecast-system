@@ -126,9 +126,24 @@ async def upload_csv(file: UploadFile = File(...)):
 
     # ── Quick parse for column detection ──────────────────────────────────────
     try:
-        raw_df      = pd.read_csv(io.BytesIO(file_bytes), nrows=5)
+        raw_df = pd.read_csv(io.BytesIO(file_bytes), nrows=10)
+
+        # ── Detect NSRDB-style multi-row header ───────────────────────────────
+        # NSRDB structure:
+        #   Row 0 → metadata column names  (Source, Location ID, GHI Units...)
+        #   Row 1 → metadata values + units (NSRDB, 223700, w/m2, c...)
+        #   Row 2 → REAL column names       (Year, Month, Day, Hour, GHI...)
+        #   Row 3+→ actual data
+        meta_indicators = ["source", "location id", "version", "units"]
+        col_lower = [str(c).lower() for c in raw_df.columns]
+
+        if any(ind in col_lower for ind in meta_indicators):
+            logger.info("Multi-row header detected — skipping rows 0 and 1, using row 2 as headers")
+            raw_df = pd.read_csv(io.BytesIO(file_bytes), skiprows=[0, 1], nrows=5)
+
         columns     = list(raw_df.columns)
-        sample_rows = raw_df.to_dict(orient="records")
+        sample_rows = raw_df.head(5).to_dict(orient="records")
+
     except Exception as exc:
         raise HTTPException(
             status_code=422,
@@ -181,7 +196,7 @@ async def upload_csv(file: UploadFile = File(...)):
         "detected_cols":  detection["detected"],
         "detection_mode": detection["detection_mode"],
         "filename":       file.filename,
-        "filepath":       filepath,        # ← path to raw CSV on disk
+        "filepath":       filepath,
         "meta":           meta,
         "expires_at":     datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS),
     }

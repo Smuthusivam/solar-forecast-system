@@ -63,33 +63,79 @@ SOLAR_CONSTANT = 1000.0   # W/m²
 
 def parse_csv(file_bytes: bytes) -> pd.DataFrame:
     """
-    Parse raw CSV bytes into a DataFrame.
-
-    Tries common encodings and separators automatically so the user
-    doesn't have to worry about file format details.
-
-    Raises:
-        ValueError if the file cannot be parsed or is empty.
+    Parse raw CSV bytes. Handles standard CSVs and
+    special formats like NSRDB which have multi-row headers.
     """
     encodings  = ["utf-8", "utf-8-sig", "latin-1", "iso-8859-1"]
     separators = [",", ";", "\t", "|"]
 
+    def _looks_like_metadata(df: pd.DataFrame) -> bool:
+        """
+        Detect if the first row is metadata, not real column names.
+        Signs: columns named 'Source', 'Location ID', 'Version',
+               or column values contain 'Units' suffix.
+        """
+        meta_indicators = ["source", "location id", "version", "units"]
+        col_lower = [str(c).lower() for c in df.columns]
+        return any(ind in col_lower for ind in meta_indicators)
+
     for encoding in encodings:
         for sep in separators:
             try:
+                # ── Try standard parse first ──────────────────────────────
                 df = pd.read_csv(
                     io.BytesIO(file_bytes),
-                    sep       = sep,
-                    encoding  = encoding,
-                    low_memory= False,
+                    sep=sep,
+                    encoding=encoding,
+                    low_memory=False,
                 )
-                # Must have at least 2 columns and MIN_ROWS rows
+
+                if df.shape[1] < 2:
+                    continue
+
+                # ── Detect NSRDB-style multi-row header ───────────────────
+                if _looks_like_metadata(df):
+                    logger.info("Detected multi-row header format (e.g. NSRDB) — skipping metadata row")
+
+                    # Skip row 0 (metadata), use row 1 as headers
+                    df = pd.read_csv(
+                        io.BytesIO(file_bytes),
+                        sep=sep,
+                        encoding=encoding,
+                        low_memory=False,
+                        skiprows=[0,1],
+                    )
+
+                    # ── Detect units row (row after headers) ──────────────
+                    # NSRDB has a 3rd row with unit labels like "w/m2", "%", "c"
+                    # These are not data — skip them too
+                    first_row = df.iloc[0].astype(str).str.lower()
+                    unit_indicators = ["w/m2", "w/m²", "%", " c", "m/s", "degree", "mbar", "cm", "kwh"]
+                    is_units_row = any(
+                        any(unit in val for unit in unit_indicators)
+                        for val in first_row.values
+                    )
+
+                    if is_units_row:
+                        logger.info("Units row detected in CSV — skipping it too")
+                        # Skip row 0 (metadata) AND row 2 (units)
+                        # Row 1 becomes headers, row 3+ becomes data
+                        df = pd.read_csv(
+                            io.BytesIO(file_bytes),
+                            sep=sep,
+                            encoding=encoding,
+                            low_memory=False,
+                            skiprows=[0, 2],
+                        )
+
+                # ── Accept if enough rows and columns ─────────────────────
                 if df.shape[1] >= 2 and len(df) >= MIN_ROWS:
                     logger.info(
                         "CSV parsed: %d rows × %d cols (encoding=%s sep=%r)",
                         len(df), df.shape[1], encoding, sep,
                     )
                     return df
+
             except Exception:
                 continue
 
@@ -97,8 +143,6 @@ def parse_csv(file_bytes: bytes) -> pd.DataFrame:
         f"Could not parse the CSV file. "
         f"Ensure it has at least {MIN_ROWS} rows and uses a standard format."
     )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Column standardisation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +184,40 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     Convert the 'timestamp' column to a proper DatetimeIndex.
     Handles ANY format through 4 progressive layers — never crashes.
     """
+     # ── NSRDB-style: separate Year/Month/Day/Hour columns ─────────────────────
+    col_lower_map = {c.strip().lower(): c for c in df.columns}
+
+    if all(k in col_lower_map for k in ["year", "month", "day", "hour"]):
+        logger.info("Detected NSRDB-style date columns — combining Year/Month/Day/Hour")
+        try:
+            minute_col = col_lower_map.get("minute")
+            build = dict(
+                year  = pd.to_numeric(df[col_lower_map["year"]],  errors="coerce"),
+                month = pd.to_numeric(df[col_lower_map["month"]], errors="coerce"),
+                day   = pd.to_numeric(df[col_lower_map["day"]],   errors="coerce"),
+                hour  = pd.to_numeric(df[col_lower_map["hour"]],  errors="coerce"),
+            )
+            if minute_col:
+                build["minute"] = pd.to_numeric(df[minute_col], errors="coerce")
+
+            df["timestamp"] = pd.to_datetime(build)
+
+            # Drop the individual date columns
+            drop_cols = [col_lower_map[k] for k in ["year","month","day","hour"] if k in col_lower_map]
+            if minute_col:
+                drop_cols.append(minute_col)
+            df = df.drop(columns=drop_cols, errors="ignore")
+
+            df = df.set_index("timestamp").sort_index()
+            df = df[~df.index.duplicated(keep="last")]
+            df = df[df.index.notna()]   # drop NaT rows
+
+            logger.info("Timestamp index: %s → %s (%d rows)", df.index[0], df.index[-1], len(df))
+            return df
+
+        except Exception as exc:
+            logger.warning("NSRDB date combine failed: %s — falling back", exc)
+
     if "timestamp" not in df.columns:
         logger.warning("No timestamp column found — generating synthetic hourly index")
         df["timestamp"] = pd.date_range(
@@ -286,6 +364,11 @@ def _fill_missing(df: pd.DataFrame) -> pd.DataFrame:
       weather cols  → linear interpolation is safe (weather changes gradually)
       Night-time irradiance gaps → fill with 0 (it's dark, not missing)
     """
+     # Drop NaT index rows before interpolation — pandas can't interpolate with NaT in index
+    df = df[df.index.notna()]
+    if len(df) == 0:
+        return df
+
     for col in df.columns:
         n_missing = df[col].isna().sum()
         if n_missing == 0:
@@ -415,30 +498,64 @@ def preprocess(
     Raises:
         ValueError for unrecoverable data issues (empty file, bad timestamps)
     """
+
     logger.info("Preprocessing pipeline started (mode=%s)", detection_mode)
 
     # ── Step 1: Parse CSV ────────────────────────────────────────────────────
     df = parse_csv(file_bytes)
     rows_raw = len(df)
 
-    # ── Step 2: Standardise column names ────────────────────────────────────
+    # ── Step 2: NSRDB timestamp — BEFORE standardise_columns drops the cols ──
+    col_lower_map = {c.strip().lower(): c for c in df.columns}
+    if all(k in col_lower_map for k in ["year", "month", "day", "hour"]):
+        logger.info("NSRDB date columns detected — building timestamp before standardising")
+        try:
+            minute_col = col_lower_map.get("minute")
+            build = dict(
+                year  = pd.to_numeric(df[col_lower_map["year"]],  errors="coerce"),
+                month = pd.to_numeric(df[col_lower_map["month"]], errors="coerce"),
+                day   = pd.to_numeric(df[col_lower_map["day"]],   errors="coerce"),
+                hour  = pd.to_numeric(df[col_lower_map["hour"]],  errors="coerce"),
+            )
+            if minute_col:
+                build["minute"] = pd.to_numeric(df[minute_col], errors="coerce")
+
+            df["timestamp"] = pd.to_datetime(build, errors="coerce")
+
+            drop_cols = [col_lower_map[k] for k in ["year","month","day","hour"] if k in col_lower_map]
+            if minute_col:
+                drop_cols.append(minute_col)
+            df = df.drop(columns=drop_cols, errors="ignore")
+
+            detected_cols = {**detected_cols, "timestamp": "timestamp"}
+            logger.info("NSRDB timestamp built successfully")
+        except Exception as exc:
+            logger.warning("NSRDB timestamp build failed: %s", exc)
+
+    # ── Step 3: Standardise column names ────────────────────────────────────
     df = standardise_columns(df, detected_cols)
 
-    # ── Step 3: Parse timestamps ─────────────────────────────────────────────
+    # ── Step 4: Parse timestamps ─────────────────────────────────────────────
     df = parse_timestamps(df)
 
-    # ── Step 4: Coerce to numeric + clip to physical bounds ──────────────────
+    # ── Step 5: Drop NaT index rows before any further processing ────────────
+    nat_count = df.index.isna().sum()
+    if nat_count > 0:
+        logger.warning("Dropping %d rows with NaT timestamps", nat_count)
+        df = df[df.index.notna()]
+
+    # ── Step 6: Coerce to numeric + clip to physical bounds ──────────────────
     df = _coerce_numeric(df)
     df = _clip_to_bounds(df)
 
-    # ── Step 5: Estimate GHI if no irradiance column ─────────────────────────
+    # ── Step 7: Estimate GHI if no irradiance column ─────────────────────────
     if detection_mode == "estimated" and "irradiance" not in df.columns:
         df = _estimate_ghi(df)
 
-    # ── Step 6: Fill missing values ──────────────────────────────────────────
+    # ── Step 8: Fill missing values ──────────────────────────────────────────
     df = _fill_missing(df)
 
-    # ── Step 7: Final validation ─────────────────────────────────────────────
+    # ── Step 9: Final validation ─────────────────────────────────────────────
     if "irradiance" not in df.columns:
         raise ValueError(
             "No irradiance column available after preprocessing. "
@@ -454,22 +571,22 @@ def preprocess(
 
     rows_clean = len(df)
 
-    # ── Step 8: Build metadata summary ───────────────────────────────────────
+    # ── Step 10: Build metadata summary ──────────────────────────────────────
     date_range_days = (df.index[-1] - df.index[0]).days + 1
     irr             = df["irradiance"]
 
     meta: dict[str, Any] = {
-        "rows_raw":            rows_raw,
-        "rows_clean":          rows_clean,
-        "pct_clean":           round(rows_clean / rows_raw * 100, 1),
-        "columns_available":   list(df.columns),
-        "irradiance_mean":     round(float(irr.mean()), 2),
-        "irradiance_max":      round(float(irr.max()),  2),
-        "irradiance_min":      round(float(irr.min()),  2),
-        "date_range_days":     date_range_days,
-        "date_start":          str(df.index[0]),
-        "date_end":            str(df.index[-1]),
-        "detection_mode":      detection_mode,
+        "rows_raw":          rows_raw,
+        "rows_clean":        rows_clean,
+        "pct_clean":         round(rows_clean / rows_raw * 100, 1),
+        "columns_available": list(df.columns),
+        "irradiance_mean":   round(float(irr.mean()), 2),
+        "irradiance_max":    round(float(irr.max()),  2),
+        "irradiance_min":    round(float(irr.min()),  2),
+        "date_range_days":   date_range_days,
+        "date_start":        str(df.index[0]),
+        "date_end":          str(df.index[-1]),
+        "detection_mode":    detection_mode,
     }
 
     logger.info(

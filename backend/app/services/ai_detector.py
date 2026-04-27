@@ -55,15 +55,14 @@ LOW_CONFIDENCE    = 0.50
 # ─────────────────────────────────────────────────────────────────────────────
 
 COLUMN_ALIASES: dict[str, list[str]] = {
-    "irradiance": [
-    "ghi", "ghi_wm2", "global_horizontal_irradiance", "solar_radiation",
-    "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
-    "radiation", "rad", "shortwave_radiation", "sw_radiation",
-    "global_radiation", "globalrad", "sr", "rs",
-    # Solar power generation columns
-    "dc_power", "ac_power", "power", "power_output", "solar_power",
-    "active_power", "generated_power", "daily_yield", "yield",
-],
+   "irradiance": [
+        "ghi", "ghi_wm2", "global_horizontal_irradiance", "solar_radiation",
+        "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
+        "radiation", "rad", "shortwave_radiation", "sw_radiation",
+        "global_radiation", "globalrad", "sr", "rs",
+        "dc_power", "ac_power", "power", "power_output", "solar_power",
+        "active_power", "generated_power",
+        ],
     "temperature": [
         "temp", "temperature", "air_temperature", "tamb", "tmp",
         "temp_c", "temp_f", "ambient_temp", "t_air", "ta", "t2m",
@@ -110,14 +109,19 @@ Column names found in the CSV:
 Sample data (first 3 rows):
 {sample_str}
 
+CRITICAL: Never return unit strings like "w/m2", "%", "c", "m/s" as column names.
+These are unit labels, not column names. Always return the actual column header.
+For NSRDB: map GHI → irradiance, Temperature → temperature, 
+Relative Humidity → humidity, Wind Speed → wind_speed.
+timestamp should be null if date is split into Year/Month/Day/Hour columns.
 Your task: identify which column corresponds to each physical variable.
 
-IMPORTANT — irradiance mapping rules:
-- Direct irradiance columns: GHI, ghi, solar_radiation, irradiance, IRRADIATION
-- Solar power output columns also map to irradiance:
-  DC_POWER, AC_POWER, dc_power, ac_power, POWER, power_output
-  These represent solar energy production and should be mapped to "irradiance"
-  if no direct irradiance column exists.
+CRITICAL RULES:
+- Column names containing "Units" (e.g. "GHI Units") are NOT data columns — ignore them
+- Look for columns named exactly: GHI, DNI, DHI, Temperature, Relative Humidity, Wind Speed
+- For NSRDB format: the real data columns are GHI, Temperature, Relative Humidity, Wind Speed
+- DC_POWER or AC_POWER map to irradiance if no GHI column exists
+- Return actual column names, never unit labels like "w/m2" or "%"
 
 Return ONLY a JSON object with these exact keys:
 {{
@@ -129,15 +133,14 @@ Return ONLY a JSON object with these exact keys:
   "sunshine_hours":  "<column name or null>",
   "timestamp":       "<column name or null>",
   "confidence":      <float between 0.0 and 1.0>,
-  "notes":           "<brief explanation of any uncertain mappings>"
+  "notes":           "<brief explanation>"
 }}
 
 Rules:
-- Use null (not "null") if a variable is not present
-- If only power output columns exist (DC_POWER, AC_POWER), map the best one to irradiance
-- confidence reflects your overall certainty across all mappings
-- Column names in your response must match exactly as given above
-- Return ONLY the JSON object — no explanation, no markdown, no backticks"""
+- Use null if a variable is not present
+- confidence reflects your overall certainty
+- Column names must match exactly as given above
+- Return ONLY the JSON — no markdown, no backticks"""
 
 
 def _call_claude_api(prompt: str) -> dict[str, Any]:
@@ -244,19 +247,31 @@ def _build_result(
         "used_fallback":  bool,
     }
     """
-    warnings: list[str] = []
+    warnings = []
     if used_fallback:
         warnings.append("Claude API unavailable — used alias-based detection as fallback")
 
-    # Validate that mapped column names actually exist in the CSV
     valid_columns = set(columns)
-    detected: dict[str, str | None] = {}
 
+    # Unit strings that Claude sometimes returns by mistake
+    UNIT_STRINGS = {
+        "w/m2", "w/m²", "kwh/m2", "%", "c", "°c", "k",
+        "m/s", "km/h", "mph", "degree", "degrees", "mbar",
+        "hpa", "cm", "mm", "hours", "year", "month", "day",
+    }
+
+    detected = {}
     for field in ["irradiance", "temperature", "humidity",
                   "wind_speed", "cloud_cover", "sunshine_hours", "timestamp"]:
         raw_value = mapping.get(field)
 
-        if raw_value and raw_value in valid_columns:
+        # Reject unit strings even if they match a column
+        if raw_value and str(raw_value).lower().strip() in UNIT_STRINGS:
+            warnings.append(
+                f"Claude returned a unit string '{raw_value}' for '{field}' — ignored"
+            )
+            detected[field] = None
+        elif raw_value and raw_value in valid_columns:
             detected[field] = raw_value
         else:
             if raw_value and raw_value not in valid_columns:
@@ -265,6 +280,7 @@ def _build_result(
                     f"but that column doesn't exist in the CSV — ignored"
                 )
             detected[field] = None
+
 
     # Determine detection mode
     # "direct"    → irradiance column found, use it as-is

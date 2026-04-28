@@ -58,10 +58,84 @@ function getHeatColor(value, max) {
 function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { forecast, result } = location.state || {};
+  const { forecast, result, historyRun } = location.state || {};
 
   const [activeTab, setActiveTab] = useState("forecast");
   const [exporting, setExporting] = useState(null);
+
+  // ── Saved history summary mode (no full forecast arrays in DB) ─────────
+  if (!forecast && historyRun) {
+    const modeClass = historyRun.detection_mode === "direct"
+      ? "bg-green-100 text-green-700"
+      : "bg-yellow-100 text-yellow-700";
+
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Saved Run Dashboard</h1>
+              <p className="text-sm text-gray-400 mt-1">
+                {historyRun.filename} · Run #{historyRun.run_id}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => navigate("/history")}
+                className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+              >
+                ← History
+              </button>
+              <button
+                onClick={() => navigate("/")}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
+              >
+                New Forecast
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${modeClass}`}>
+                {historyRun.detection_mode}
+              </span>
+              <span className="text-xs text-gray-400">Horizon: {historyRun.horizon}h</span>
+              <span className="text-xs text-gray-400">Rows: {historyRun.rows_processed.toLocaleString()}</span>
+              <span className="text-xs text-gray-400">Anomalies: {historyRun.anomaly_count}</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <StatCard
+                label="RMSE"
+                value={historyRun.ensemble_rmse.toFixed(2)}
+                unit="W/m²"
+                color="text-blue-600"
+                sub="saved ensemble metric"
+              />
+              <StatCard
+                label="MAE"
+                value={historyRun.ensemble_mae.toFixed(2)}
+                unit="W/m²"
+                color="text-purple-600"
+                sub="saved ensemble metric"
+              />
+              <StatCard
+                label="R²"
+                value={historyRun.ensemble_r2.toFixed(4)}
+                color={historyRun.ensemble_r2 > 0.85 ? "text-green-600" : "text-orange-500"}
+                sub="saved ensemble metric"
+              />
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            This view shows saved summary metrics from history. Full forecast charts are not stored in the database, so rerun the forecast from upload to see detailed plots.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── No data guard ──────────────────────────────────────────────────────
   if (!forecast) {

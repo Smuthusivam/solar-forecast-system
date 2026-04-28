@@ -221,8 +221,8 @@ function History() {
                     <tr key={run.run_id}
                       className={`border-b hover:bg-blue-50 cursor-pointer transition
                         ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
-                      onClick={() => navigate("/", {
-                        state: { highlightRunId: run.run_id }
+                      onClick={() => navigate("/dashboard", {
+                        state: { historyRun: run }
                       })}
                     >
                       <td className="p-3 font-mono text-gray-400">#{run.run_id}</td>
@@ -268,7 +268,7 @@ function History() {
               {search && ` matching "${search}"`}
             </p>
             <p className="text-xs text-gray-400">
-              Click any row to go back and re-run that file
+              Click any row to open the saved run summary dashboard
             </p>
           </div>
         </div>

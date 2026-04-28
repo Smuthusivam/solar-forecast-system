@@ -33,14 +33,26 @@ const METRIC_INFO = {
   mape: { label: "MAPE",  unit: "%",    lower: true,  desc: "Mean Absolute Percentage Error" },
 };
 
-// Detect overfitting: train R² much higher than test R²
-function getOverfitBadge(trainR2, testR2) {
+// Strict model health check — considers both absolute test quality AND train/test gap.
+// Priority: absolute quality failures are caught first, then overfitting/underfitting.
+function getModelStatus(trainR2, testR2) {
   if (trainR2 == null || testR2 == null) return null;
   const gap = trainR2 - testR2;
-  if (gap > 0.15) return { label: "Overfitting",     color: "text-red-500" };
-  if (gap > 0.05) return { label: "Mild overfit",    color: "text-orange-500" };
-  if (gap < -0.05) return { label: "Underfit",       color: "text-yellow-600" };
-  return { label: "Well-balanced", color: "text-green-600" };
+
+  // Absolute quality — catches bad models that happen to have a small gap
+  if (testR2 < 0)    return { label: "Failing",      badge: "bg-red-100 text-red-700 border-red-300",    dot: "bg-red-600" };
+  if (testR2 < 0.50) return { label: "Poor",         badge: "bg-red-50 text-red-500 border-red-200",     dot: "bg-red-400" };
+  if (testR2 < 0.75) return { label: "Weak",         badge: "bg-orange-50 text-orange-600 border-orange-200", dot: "bg-orange-400" };
+
+  // Gap-based overfitting — only meaningful when the model isn't already failing
+  if (gap > 0.15)    return { label: "Overfitting",  badge: "bg-red-50 text-red-500 border-red-200",     dot: "bg-red-400" };
+  if (gap > 0.05)    return { label: "Mild overfit", badge: "bg-orange-50 text-orange-500 border-orange-200", dot: "bg-orange-400" };
+  if (gap < -0.05)   return { label: "Underfit",     badge: "bg-yellow-50 text-yellow-700 border-yellow-200", dot: "bg-yellow-500" };
+
+  // Good — differentiate by how good
+  if (testR2 >= 0.95) return { label: "Excellent",   badge: "bg-green-100 text-green-700 border-green-300", dot: "bg-green-600" };
+  if (testR2 >= 0.85) return { label: "Good",        badge: "bg-green-50 text-green-600 border-green-200",  dot: "bg-green-500" };
+  return                     { label: "Acceptable",  badge: "bg-blue-50 text-blue-600 border-blue-200",    dot: "bg-blue-400" };
 }
 
 
@@ -231,7 +243,7 @@ function ModelComparison() {
             </thead>
             <tbody>
               {per_model.map((m, i) => {
-                const status = getOverfitBadge(m.train_metrics?.r2, m.metrics.r2);
+                const status = getModelStatus(m.train_metrics?.r2, m.metrics.r2);
                 const isBest = m.model_name === bestModel.model_name;
                 return (
                   <tr key={i} className="border-b hover:bg-gray-50">
@@ -262,8 +274,13 @@ function ModelComparison() {
                         <td className="p-2 text-right">{m.metrics.mape?.toFixed(2) ?? "—"}</td>
                       </>
                     )}
-                    <td className={`p-3 text-right text-xs font-medium ${status?.color || "text-gray-400"}`}>
-                      {status?.label || "—"}
+                    <td className="p-3 text-right">
+                      {status ? (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${status.badge}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                          {status.label}
+                        </span>
+                      ) : "—"}
                     </td>
                   </tr>
                 );

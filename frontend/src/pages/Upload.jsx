@@ -85,13 +85,22 @@ function Upload() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
 
         {/* Title */}
-        <div className="max-w-3xl">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Solar Irradiance Forecasting
-          </h1>
-          <p className="text-gray-500">
-            Upload any solar or weather CSV to get started
-          </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-3xl">
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+              Solar Irradiance Forecasting
+            </h1>
+            <p className="text-gray-500">
+              Upload any solar or weather CSV to get started
+            </p>
+          </div>
+
+          <button
+            onClick={() => navigate("/history")}
+            className="self-start rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+          >
+            View History
+          </button>
         </div>
 
         {/* Drop Zone */}

@@ -33,26 +33,32 @@ const METRIC_INFO = {
   mape: { label: "MAPE",  unit: "%",    lower: true,  desc: "Mean Absolute Percentage Error" },
 };
 
-// Strict model health check — considers both absolute test quality AND train/test gap.
-// Priority: absolute quality failures are caught first, then overfitting/underfitting.
-function getModelStatus(trainR2, testR2) {
+// Strict model health check — considers absolute test quality, R² gap, AND RMSE ratio.
+// R² gap alone is misleading: a model can have train R²=0.9999 / test R²=0.98 (tiny gap)
+// while its RMSE explodes 4-5× on test — that is overfitting and must be flagged.
+function getModelStatus(trainR2, testR2, trainRmse, testRmse) {
   if (trainR2 == null || testR2 == null) return null;
-  const gap = trainR2 - testR2;
 
-  // Absolute quality — catches bad models that happen to have a small gap
-  if (testR2 < 0)    return { label: "Failing",      badge: "bg-red-100 text-red-700 border-red-300",    dot: "bg-red-600" };
-  if (testR2 < 0.50) return { label: "Poor",         badge: "bg-red-50 text-red-500 border-red-200",     dot: "bg-red-400" };
+  const r2Gap    = trainR2 - testR2;
+  const rmseRatio = (trainRmse > 0 && testRmse != null) ? testRmse / trainRmse : 1;
+
+  // 1. Absolute quality failures — catch bad models regardless of gap
+  if (testR2 < 0)    return { label: "Failing",      badge: "bg-red-100 text-red-700 border-red-300",         dot: "bg-red-600" };
+  if (testR2 < 0.50) return { label: "Poor",         badge: "bg-red-50 text-red-500 border-red-200",          dot: "bg-red-400" };
   if (testR2 < 0.75) return { label: "Weak",         badge: "bg-orange-50 text-orange-600 border-orange-200", dot: "bg-orange-400" };
 
-  // Gap-based overfitting — only meaningful when the model isn't already failing
-  if (gap > 0.15)    return { label: "Overfitting",  badge: "bg-red-50 text-red-500 border-red-200",     dot: "bg-red-400" };
-  if (gap > 0.05)    return { label: "Mild overfit", badge: "bg-orange-50 text-orange-500 border-orange-200", dot: "bg-orange-400" };
-  if (gap < -0.05)   return { label: "Underfit",     badge: "bg-yellow-50 text-yellow-700 border-yellow-200", dot: "bg-yellow-500" };
+  // 2. Overfitting — flag if EITHER R² gap is large OR RMSE ratio is high
+  //    RMSE ratio catches cases where R² gap looks small but error blows up on test
+  if (r2Gap > 0.15 || rmseRatio > 3.5) return { label: "Overfitting",  badge: "bg-red-50 text-red-500 border-red-200",          dot: "bg-red-400" };
+  if (r2Gap > 0.05 || rmseRatio > 2.0) return { label: "Mild overfit", badge: "bg-orange-50 text-orange-500 border-orange-200", dot: "bg-orange-400" };
 
-  // Good — differentiate by how good
-  if (testR2 >= 0.95) return { label: "Excellent",   badge: "bg-green-100 text-green-700 border-green-300", dot: "bg-green-600" };
-  if (testR2 >= 0.85) return { label: "Good",        badge: "bg-green-50 text-green-600 border-green-200",  dot: "bg-green-500" };
-  return                     { label: "Acceptable",  badge: "bg-blue-50 text-blue-600 border-blue-200",    dot: "bg-blue-400" };
+  // 3. Underfitting
+  if (r2Gap < -0.05) return { label: "Underfit",    badge: "bg-yellow-50 text-yellow-700 border-yellow-200", dot: "bg-yellow-500" };
+
+  // 4. Genuinely good — model generalizes well
+  if (testR2 >= 0.95) return { label: "Excellent",  badge: "bg-green-100 text-green-700 border-green-300",   dot: "bg-green-600" };
+  if (testR2 >= 0.85) return { label: "Good",       badge: "bg-green-50 text-green-600 border-green-200",    dot: "bg-green-500" };
+  return                     { label: "Acceptable", badge: "bg-blue-50 text-blue-600 border-blue-200",       dot: "bg-blue-400" };
 }
 
 
@@ -243,7 +249,7 @@ function ModelComparison() {
             </thead>
             <tbody>
               {per_model.map((m, i) => {
-                const status = getModelStatus(m.train_metrics?.r2, m.metrics.r2);
+                const status = getModelStatus(m.train_metrics?.r2, m.metrics.r2, m.train_metrics?.rmse, m.metrics.rmse);
                 const isBest = m.model_name === bestModel.model_name;
                 return (
                   <tr key={i} className="border-b hover:bg-gray-50">

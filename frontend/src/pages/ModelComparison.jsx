@@ -348,9 +348,54 @@ function ModelComparison() {
         </div>
       </Card>
 
-      {/* Predicted vs Actual */}
+      {/* Individual Predicted vs Actual — one chart per model */}
+      <Card title="Predicted vs Actual — Per Model"
+        subtitle="Each model's predictions (colored) against ground truth (gray) on the held-out test set">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[...per_model, { model_name: "Ensemble", metrics: ensemble_metrics, train_metrics: null }].map(m => {
+            const color = MODEL_COLORS[m.model_name];
+            const chartData = perModelChartData.map(row => ({
+              time:      row.time,
+              Actual:    row.Actual,
+              Predicted: row[m.model_name],
+            }));
+            return (
+              <div key={m.model_name} className="border border-gray-100 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: color }} />
+                    <span className="font-semibold text-gray-700 text-sm">{m.model_name}</span>
+                  </div>
+                  <div className="flex gap-3 text-xs text-gray-500">
+                    <span>RMSE <strong className="text-gray-700">{m.metrics.rmse.toFixed(2)}</strong></span>
+                    <span>R² <strong className={m.metrics.r2 > 0.9 ? "text-green-600" : m.metrics.r2 > 0 ? "text-yellow-600" : "text-red-500"}>
+                      {m.metrics.r2.toFixed(4)}
+                    </strong></span>
+                  </div>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="time" tick={{ fontSize: 9 }}
+                      interval={Math.floor(chartData.length / 6)} />
+                    <YAxis tick={{ fontSize: 10 }}
+                      label={{ value: "W/m²", angle: -90, position: "insideLeft", style: { fontSize: 10 } }} />
+                    <Tooltip contentStyle={{ fontSize: 11 }}
+                      formatter={(val, name) => [val != null ? `${val} W/m²` : "—", name]} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="Actual"    stroke={MODEL_COLORS.Actual} strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="Predicted" stroke={color}               strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Predicted vs Actual — All Models overlaid */}
       <Card title="Predicted vs Actual — All Models"
-        subtitle="Time series comparison on the test set. Solid green = ground truth, dashed lines = individual models, solid purple = ensemble">
+        subtitle="Time series comparison on the test set. Solid gray = ground truth, dashed lines = individual models, solid purple = ensemble">
         <ResponsiveContainer width="100%" height={400}>
           <LineChart data={perModelChartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

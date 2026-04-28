@@ -220,4 +220,4 @@ if __name__ == "__main__":
     model2.load("ml_core/saved_models/xgboost.pkl")
     y_pred2 = model2.predict(X_test)
     print(f"\n[XGBoost] Reload check — predictions match: {np.allclose(y_pred, y_pred2)}")
-    print("\n✓ XGBoostModel passed all checks.")
+    print("\nXGBoostModel passed all checks.")

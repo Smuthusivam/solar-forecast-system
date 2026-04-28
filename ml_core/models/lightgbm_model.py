@@ -191,4 +191,4 @@ if __name__ == "__main__":
     model2.load("ml_core/saved_models/lightgbm.pkl")
     y_pred2 = model2.predict(X_test)
     print(f"\n[LightGBM] Reload check — predictions match: {np.allclose(y_pred, y_pred2)}")
-    print("\n✓ LightGBMModel passed all checks.")
+    print("\nLightGBMModel passed all checks.")

@@ -234,7 +234,7 @@ if __name__ == "__main__":
 
     result = build_features(raw_df, target_col="irradiance", col_map=col_map)
 
-    print("✓ build_features() ran successfully")
+    print("build_features() ran successfully")
     print(f"  Input rows  : {len(raw_df)}")
     print(f"  Output rows : {len(result)}")
     print(f"  Features    : {len(get_feature_columns(result))} columns")

@@ -245,4 +245,4 @@ if __name__ == "__main__":
     print(f"\nModel comparison table (sorted by RMSE):")
     print(comparison.to_string(index=False))
 
-    print("\n✓ evaluate.py passed all checks.")
+    print("\nevaluate.py passed all checks.")

@@ -247,7 +247,7 @@ function Dashboard() {
             {result?.filename} — Run #{forecast.run_id} —
             <span className="ml-1">
               {forecast.detection_mode === "direct"
-                ? "✅ Direct GHI" : "⚡ Estimated GHI"}
+                ? "Direct GHI" : "Estimated GHI"}
             </span>
           </p>
         </div>
@@ -257,13 +257,13 @@ function Dashboard() {
             onClick={() => handleExport("csv")}
             disabled={exporting !== null}
             className="border border-gray-300 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50">
-            {exporting === "csv" ? "..." : "📄 CSV"}
+            {exporting === "csv" ? "..." : "CSV"}
           </button>
           <button
             onClick={() => handleExport("pdf")}
             disabled={exporting !== null}
             className="border border-gray-300 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50">
-            {exporting === "pdf" ? "..." : "📑 PDF"}
+            {exporting === "pdf" ? "..." : "PDF"}
           </button>
           <button onClick={() => navigate("/compare", { state: { forecast, result } })}
             className="border border-blue-300 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">

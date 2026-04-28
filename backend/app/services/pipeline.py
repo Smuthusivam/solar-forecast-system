@@ -115,8 +115,7 @@ def _build_feature_matrix(
 def _run_xgboost(
     train_feat: pd.DataFrame,
     test_feat:  pd.DataFrame,
-) -> tuple[np.ndarray, np.ndarray, dict, dict]:
-
+) -> tuple[np.ndarray, np.ndarray, dict, dict, dict]:
     feat_cols = get_feature_columns(train_feat)
 
     X_train = train_feat[feat_cols]
@@ -127,21 +126,23 @@ def _run_xgboost(
     model = XGBoostModel()
     model.train(X_train, y_train)
 
-    train_preds = model.predict(X_train)
-    test_preds  = model.predict(X_test)
-    metrics     = compute_all(y_test, test_preds)
-    importance  = model.get_feature_importance() if hasattr(model, "get_feature_importance") else {}
+    train_preds   = model.predict(X_train)
+    test_preds    = model.predict(X_test)
+    train_metrics = compute_all(y_train, train_preds)
+    test_metrics  = compute_all(y_test,  test_preds)
+    importance    = model.get_feature_importance() if hasattr(model, "get_feature_importance") else {}
 
-    logger.info("XGBoost  | RMSE=%.2f  R²=%.3f", metrics["rmse"], metrics["r2"])
-    return train_preds, test_preds, metrics, importance
+    logger.info("XGBoost  | TRAIN RMSE=%.2f R²=%.3f | TEST RMSE=%.2f R²=%.3f",
+                train_metrics["rmse"], train_metrics["r2"],
+                test_metrics["rmse"],  test_metrics["r2"])
+    return train_preds, test_preds, train_metrics, test_metrics, importance
+
 
 def _run_lightgbm(
     train_feat: pd.DataFrame,
     test_feat:  pd.DataFrame,
-) -> tuple[np.ndarray, np.ndarray, dict, dict]:
-
+) -> tuple[np.ndarray, np.ndarray, dict, dict, dict]:
     feat_cols = get_feature_columns(train_feat)
-
 
     X_train = train_feat[feat_cols]
     y_train = train_feat[TARGET_COL].values
@@ -151,25 +152,23 @@ def _run_lightgbm(
     model = LightGBMModel()
     model.train(X_train, y_train)
 
-    train_preds = model.predict(X_train)
-    test_preds  = model.predict(X_test)
-    metrics     = compute_all(y_test, test_preds)
-    importance  = model.get_feature_importance() if hasattr(model, "get_feature_importance") else {}
+    train_preds   = model.predict(X_train)
+    test_preds    = model.predict(X_test)
+    train_metrics = compute_all(y_train, train_preds)
+    test_metrics  = compute_all(y_test,  test_preds)
+    importance    = model.get_feature_importance() if hasattr(model, "get_feature_importance") else {}
 
-    logger.info("LightGBM | RMSE=%.2f  R²=%.3f", metrics["rmse"], metrics["r2"])
-    return train_preds, test_preds, metrics, importance
+    logger.info("LightGBM | TRAIN RMSE=%.2f R²=%.3f | TEST RMSE=%.2f R²=%.3f",
+                train_metrics["rmse"], train_metrics["r2"],
+                test_metrics["rmse"],  test_metrics["r2"])
+    return train_preds, test_preds, train_metrics, test_metrics, importance
 
 
 def _run_prophet(
     train_df: pd.DataFrame,
     test_df:  pd.DataFrame,
     horizon:  int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-    """
-    Train Prophet using X (feature DataFrame with DatetimeIndex) and y (target Series).
-    Uses predict_with_intervals() to get confidence bands for the dashboard.
-    """
-    # Prophet only uses the index for timestamps — pass feature df + target series
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict, dict]:
     X_train = train_df.drop(columns=[TARGET_COL])
     y_train = train_df[TARGET_COL]
     X_test  = test_df.drop(columns=[TARGET_COL])
@@ -178,21 +177,23 @@ def _run_prophet(
     model = ProphetModel()
     model.train(X_train, y_train)
 
-    # Use predict_with_intervals to get CI bands for the dashboard
+    # Predict on training set for train metrics
+    train_preds = model.predict(X_train)
+    train_preds = np.clip(train_preds, 0, None)
+    train_metrics = compute_all(y_train.values, train_preds)
+
+    # Predict on test set with intervals
     ci_df = model.predict_with_intervals(X_test)
+    test_preds = np.clip(ci_df["yhat"].values,       0, None)
+    lower      = np.clip(ci_df["yhat_lower"].values, 0, None)
+    upper      = np.clip(ci_df["yhat_upper"].values, 0, None)
 
-    test_preds = ci_df["yhat"].values
-    lower      = ci_df["yhat_lower"].values
-    upper      = ci_df["yhat_upper"].values
+    test_metrics = compute_all(y_test, test_preds)
 
-    test_preds = np.clip(test_preds, 0, None)
-    lower      = np.clip(lower,      0, None)
-    upper      = np.clip(upper,      0, None)
-
-    metrics = compute_all(y_test, test_preds)
-    logger.info("Prophet  | RMSE=%.2f  R²=%.3f", metrics["rmse"], metrics["r2"])
-    return test_preds, lower, upper, metrics
-
+    logger.info("Prophet  | TRAIN RMSE=%.2f R²=%.3f | TEST RMSE=%.2f R²=%.3f",
+                train_metrics["rmse"], train_metrics["r2"],
+                test_metrics["rmse"],  test_metrics["r2"])
+    return train_preds, test_preds, lower, upper, train_metrics, test_metrics
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Ensemble weighting
@@ -345,13 +346,13 @@ def run_pipeline(
 
     # ── Step 3: Run all three models ──────────────────────────────────────────
     logger.info("Training XGBoost...")
-    _, xgb_preds, xgb_metrics, xgb_imp = _run_xgboost(train_feat, test_feat)
+    xgb_train_preds, xgb_preds, xgb_train_metrics, xgb_metrics, xgb_imp = _run_xgboost(train_feat, test_feat)
 
     logger.info("Training LightGBM...")
-    _, lgbm_preds, lgbm_metrics, lgbm_imp = _run_lightgbm(train_feat, test_feat)
+    lgbm_train_preds, lgbm_preds, lgbm_train_metrics, lgbm_metrics, lgbm_imp = _run_lightgbm(train_feat, test_feat)
 
     logger.info("Training Prophet...")
-    prophet_preds, lower, upper, prophet_metrics = _run_prophet(
+    prophet_train_preds, prophet_preds, lower, upper, prophet_train_metrics, prophet_metrics = _run_prophet(
         train_df, test_df, horizon
     )
 
@@ -392,22 +393,25 @@ def run_pipeline(
 
     per_model = [
         {
-            "model_name":  "XGBoost",
-            "predictions": xgb_preds[:min_len].tolist(),
-            "metrics":     xgb_metrics,
-            "weight":      weights["xgboost"],
+            "model_name":    "XGBoost",
+            "predictions":   xgb_preds[:min_len].tolist(),
+            "metrics":       xgb_metrics,
+            "train_metrics": xgb_train_metrics,
+            "weight":        weights["xgboost"],
         },
         {
-            "model_name":  "LightGBM",
-            "predictions": lgbm_preds[:min_len].tolist(),
-            "metrics":     lgbm_metrics,
-            "weight":      weights["lightgbm"],
+            "model_name":    "LightGBM",
+            "predictions":   lgbm_preds[:min_len].tolist(),
+            "metrics":       lgbm_metrics,
+            "train_metrics": lgbm_train_metrics,
+            "weight":        weights["lightgbm"],
         },
         {
-            "model_name":  "Prophet",
-            "predictions": prophet_preds[:min_len].tolist(),
-            "metrics":     prophet_metrics,
-            "weight":      weights["prophet"],
+            "model_name":    "Prophet",
+            "predictions":   prophet_preds[:min_len].tolist(),
+            "metrics":       prophet_metrics,
+            "train_metrics": prophet_train_metrics,
+            "weight":        weights["prophet"],
         },
     ]
 

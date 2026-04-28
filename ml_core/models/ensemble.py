@@ -344,4 +344,4 @@ if __name__ == "__main__":
     preds2 = ensemble2.predict(X_test)
     preds1 = ensemble.predict(X_test)
     print(f"\n[Ensemble] Reload check — predictions match: {np.allclose(preds1, preds2)}")
-    print("\n✓ EnsembleModel passed all checks.")
+    print("\nEnsembleModel passed all checks.")

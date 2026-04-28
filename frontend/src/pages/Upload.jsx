@@ -104,7 +104,6 @@ function Upload() {
               : "border-gray-300 bg-white hover:border-blue-400"
             }`}
         >
-          <p className="text-4xl mb-3">☁️</p>
           <p className="text-gray-600 font-medium">
             Drag & drop your CSV here
           </p>
@@ -124,7 +123,7 @@ function Upload() {
           {/* Show selected file name */}
           {file && (
             <p className="mt-4 text-sm text-green-600 font-medium">
-              ✅ {file.name}
+              {file.name}
             </p>
           )}
         </div>
@@ -161,7 +160,7 @@ function Upload() {
                   ? "bg-green-100 text-green-700"
                   : "bg-yellow-100 text-yellow-700"
                 }`}>
-                {result.mode === "direct" ? "✅ Direct GHI" : "⚡ GHI Estimated"}
+                {result.mode === "direct" ? "Direct GHI" : "GHI Estimated"}
               </span>
             </div>
 
@@ -215,7 +214,7 @@ function Upload() {
               disabled={running}
               className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition"
             >
-              {running ? "Running Models..." : "🚀 Run Forecast"}
+              {running ? "Running Models..." : "Run Forecast"}
             </button>
 
           </div>

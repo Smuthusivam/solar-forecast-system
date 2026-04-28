@@ -140,6 +140,7 @@ class PerModelForecast(BaseModel):
     model_name: str
     predictions: list[float]
     metrics:     ModelMetrics
+    train_metrics: Optional[ModelMetrics] = None
     weight:      float = Field(..., ge=0.0, le=1.0,
                                description="Ensemble weight assigned to this model")
 

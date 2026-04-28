@@ -95,10 +95,11 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
 
     per_model = [
         PerModelForecast(
-            model_name  = m["model_name"],
-            predictions = m["predictions"],
-            metrics     = ModelMetrics(**m["metrics"]),
-            weight      = m["weight"],
+            model_name    = m["model_name"],
+            predictions   = m["predictions"],
+            metrics       = ModelMetrics(**m["metrics"]),
+            train_metrics = ModelMetrics(**m["train_metrics"]) if m.get("train_metrics") else None,
+            weight        = m["weight"],
         )
         for m in result["per_model"]
     ]

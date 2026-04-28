@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter,
+  ResponsiveContainer, BarChart, Bar, Cell,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ReferenceLine
 } from "recharts";
 
-// ── Reusable section card ─────────────────────────────────────────────────
+// ─── Reusable bits ─────────────────────────────────────────────────────
 function Card({ title, subtitle, children }) {
   return (
     <div className="bg-white rounded-xl shadow p-6 mb-6">
@@ -16,7 +18,6 @@ function Card({ title, subtitle, children }) {
   );
 }
 
-// ── Color map per model ───────────────────────────────────────────────────
 const MODEL_COLORS = {
   XGBoost:  "#3b82f6",
   LightGBM: "#10b981",
@@ -27,15 +28,28 @@ const MODEL_COLORS = {
 
 const METRIC_INFO = {
   rmse: { label: "RMSE",  unit: "W/m²", lower: true,  desc: "Root Mean Square Error — penalises large errors" },
-  mae:  { label: "MAE",   unit: "W/m²", lower: true,  desc: "Mean Absolute Error — average magnitude of errors" },
+  mae:  { label: "MAE",   unit: "W/m²", lower: true,  desc: "Mean Absolute Error" },
   r2:   { label: "R²",    unit: "",     lower: false, desc: "Coefficient of Determination — 1.0 = perfect" },
   mape: { label: "MAPE",  unit: "%",    lower: true,  desc: "Mean Absolute Percentage Error" },
 };
+
+// Detect overfitting: train R² much higher than test R²
+function getOverfitBadge(trainR2, testR2) {
+  if (trainR2 == null || testR2 == null) return null;
+  const gap = trainR2 - testR2;
+  if (gap > 0.15) return { label: "Overfitting",     color: "text-red-500" };
+  if (gap > 0.05) return { label: "Mild overfit",    color: "text-orange-500" };
+  if (gap < -0.05) return { label: "Underfit",       color: "text-yellow-600" };
+  return { label: "Well-balanced", color: "text-green-600" };
+}
+
 
 function ModelComparison() {
   const location = useLocation();
   const navigate = useNavigate();
   const { forecast, result } = location.state || {};
+
+  const [view, setView] = useState("test");   // "train" | "test" | "both"
 
   if (!forecast) {
     return (
@@ -49,24 +63,25 @@ function ModelComparison() {
     );
   }
 
-  const { per_model, forecast: points, ensemble_metrics, ensemble_train_metrics, feature_importance } = forecast;
+  const { per_model, forecast: points, ensemble_metrics, feature_importance } = forecast;
 
-  // ── Build comparison table rows ───────────────────────────────────────────
+  // ── Best model on test ──────────────────────────────────────────────
+  const bestModel = [...per_model].sort((a, b) => a.metrics.rmse - b.metrics.rmse)[0];
+
+  // ── Build comparison rows including ensemble ────────────────────────
   const allModels = [
     ...per_model,
-    { model_name: "Ensemble", metrics: ensemble_metrics, weight: 1.0 }
+    { model_name: "Ensemble", metrics: ensemble_metrics, train_metrics: null, weight: 1.0 }
   ];
 
-  // ── Chart data: predicted vs actual per model (sampled) ──────────────────
+  // ── Time series chart data ──────────────────────────────────────────
   const step = Math.max(1, Math.floor(points.length / 150));
-  const actuals = points.filter((_, i) => i % step === 0).map(p => p.actual);
-
   const perModelChartData = points
     .filter((_, i) => i % step === 0)
     .map((p, i) => {
       const row = {
-        time:    p.timestamp.substring(5, 16).replace("T", " "),
-        Actual:  p.actual != null ? parseFloat(p.actual.toFixed(1)) : null,
+        time:   p.timestamp.substring(5, 16).replace("T", " "),
+        Actual: p.actual != null ? parseFloat(p.actual.toFixed(1)) : null,
       };
       per_model.forEach(m => {
         row[m.model_name] = m.predictions[i * step] != null
@@ -77,7 +92,7 @@ function ModelComparison() {
       return row;
     });
 
-  // ── Residuals per model ───────────────────────────────────────────────────
+  // ── Residuals ─────────────────────────────────────────────────────────
   const residualData = points
     .filter((_, i) => i % step === 0)
     .map((p, i) => {
@@ -94,20 +109,19 @@ function ModelComparison() {
       return row;
     });
 
-  // ── Scatter: predicted vs actual ─────────────────────────────────────────
-  const scatterData = per_model.map(m => ({
-    name: m.model_name,
-    color: MODEL_COLORS[m.model_name],
-    data: points
-      .filter((_, i) => i % step === 0)
-      .map((p, i) => ({
-        actual:    p.actual,
-        predicted: m.predictions[i * step],
-      }))
-      .filter(d => d.actual != null && d.predicted != null),
-  }));
+  // ── Radar chart data — uses TEST metrics ────────────────────────────
+  const maxRMSE = Math.max(...allModels.map(m => m.metrics.rmse));
+  const maxMAE  = Math.max(...allModels.map(m => m.metrics.mae));
+  const maxMAPE = Math.max(...allModels.map(m => m.metrics.mape || 0));
 
-  // ── Feature importance ────────────────────────────────────────────────────
+  const radarData = [
+    { metric: "R²",          ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat((m.metrics.r2 * 100).toFixed(1))])) },
+    { metric: "RMSE (inv)",  ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat(((1 - m.metrics.rmse / maxRMSE) * 100).toFixed(1))])) },
+    { metric: "MAE (inv)",   ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat(((1 - m.metrics.mae  / maxMAE)  * 100).toFixed(1))])) },
+    { metric: "MAPE (inv)",  ...Object.fromEntries(allModels.map(m => [m.model_name, parseFloat(((1 - (m.metrics.mape || 0) / (maxMAPE || 1)) * 100).toFixed(1))])) },
+  ];
+
+  // ── Feature importance ────────────────────────────────────────────────
   const featData = feature_importance
     ? Object.entries(feature_importance)
         .slice(0, 15)
@@ -117,8 +131,13 @@ function ModelComparison() {
         }))
     : [];
 
-  // ── Best model ────────────────────────────────────────────────────────────
-  const bestModel = [...per_model].sort((a, b) => a.metrics.rmse - b.metrics.rmse)[0];
+  // ── Train vs Test gap chart data ─────────────────────────────────────
+  const gapData = per_model.map(m => ({
+    name:     m.model_name,
+    "Train R²": m.train_metrics?.r2 ?? 0,
+    "Test R²":  m.metrics.r2,
+    fill:     MODEL_COLORS[m.model_name],
+  }));
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -128,7 +147,7 @@ function ModelComparison() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Model Comparison</h1>
           <p className="text-sm text-gray-400 mt-1">
-            XGBoost vs LightGBM vs Prophet vs Ensemble — {points.length} test points
+            XGBoost vs LightGBM vs Prophet vs Ensemble — train + test comparison
           </p>
         </div>
         <div className="flex gap-3">
@@ -138,75 +157,165 @@ function ModelComparison() {
           </button>
           <button onClick={() => navigate("/anomalies", { state: { forecast, result } })}
             className="border border-orange-300 text-orange-600 px-4 py-2 rounded-lg text-sm hover:bg-orange-50">
-            Anomaly Report →
+            Anomalies →
           </button>
         </div>
       </div>
 
       {/* Best model banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center gap-4">
-        <span className="text-2xl">🏆</span>
         <div>
           <p className="font-semibold text-blue-800">
-            Best Individual Model: {bestModel.model_name}
+            Best Individual Model on Test Set: {bestModel.model_name}
           </p>
           <p className="text-sm text-blue-600">
-            RMSE={bestModel.metrics.rmse.toFixed(2)} W/m²  |
-            R²={bestModel.metrics.r2.toFixed(4)}  |
-            MAE={bestModel.metrics.mae.toFixed(2)} W/m²
+            Test RMSE={bestModel.metrics.rmse.toFixed(2)} W/m² |
+            Test R²={bestModel.metrics.r2.toFixed(4)} |
+            {bestModel.train_metrics &&
+              ` Train R²=${bestModel.train_metrics.r2.toFixed(4)}`}
           </p>
         </div>
       </div>
 
-      {/* Metrics comparison table */}
-      <Card title="Metrics Comparison Table"
-        subtitle="All four metrics across all models on the held-out test set (last 20% of data)">
+      {/* View selector */}
+      <div className="flex gap-2 mb-6">
+        <span className="text-sm text-gray-500 self-center">View metrics:</span>
+        {[
+          { id: "test",  label: "Test Only" },
+          { id: "train", label: "Train Only" },
+          { id: "both",  label: "Train + Test" },
+        ].map(v => (
+          <button key={v.id}
+            onClick={() => setView(v.id)}
+            className={`px-4 py-1 rounded-full text-sm font-medium transition
+              ${view === v.id
+                ? "bg-blue-600 text-white"
+                : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"}`}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Train vs Test metrics table */}
+      <Card title="Train vs Test Metrics"
+        subtitle="Compare model performance on training data (what it has seen) vs test data (held-out 20%). A large gap suggests overfitting.">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b">
-                <th className="text-left p-3 text-gray-600">Model</th>
-                <th className="text-right p-3 text-gray-600">RMSE (W/m²) ↓</th>
-                <th className="text-right p-3 text-gray-600">MAE (W/m²) ↓</th>
-                <th className="text-right p-3 text-gray-600">R² ↑</th>
-                <th className="text-right p-3 text-gray-600">MAPE (%) ↓</th>
-                <th className="text-right p-3 text-gray-600">Weight</th>
+                <th rowSpan={2} className="text-left p-3 text-gray-600 align-bottom">Model</th>
+                {(view === "train" || view === "both") &&
+                  <th colSpan={4} className="text-center p-2 text-gray-600 bg-blue-50">TRAIN SET</th>}
+                {(view === "test" || view === "both") &&
+                  <th colSpan={4} className="text-center p-2 text-gray-600 bg-orange-50">TEST SET</th>}
+                <th rowSpan={2} className="text-right p-3 text-gray-600 align-bottom">Status</th>
+              </tr>
+              <tr className="bg-gray-50 border-b">
+                {(view === "train" || view === "both") && (
+                  <>
+                    <th className="text-right p-2 text-gray-500 bg-blue-50">RMSE</th>
+                    <th className="text-right p-2 text-gray-500 bg-blue-50">MAE</th>
+                    <th className="text-right p-2 text-gray-500 bg-blue-50">R²</th>
+                    <th className="text-right p-2 text-gray-500 bg-blue-50">MAPE</th>
+                  </>
+                )}
+                {(view === "test" || view === "both") && (
+                  <>
+                    <th className="text-right p-2 text-gray-500 bg-orange-50">RMSE</th>
+                    <th className="text-right p-2 text-gray-500 bg-orange-50">MAE</th>
+                    <th className="text-right p-2 text-gray-500 bg-orange-50">R²</th>
+                    <th className="text-right p-2 text-gray-500 bg-orange-50">MAPE</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
-              {allModels.map((m, i) => {
-                const isEnsemble = m.model_name === "Ensemble";
+              {per_model.map((m, i) => {
+                const status = getOverfitBadge(m.train_metrics?.r2, m.metrics.r2);
                 const isBest = m.model_name === bestModel.model_name;
                 return (
-                  <tr key={i}
-                    className={`border-b ${isEnsemble ? "bg-purple-50 font-semibold" : "hover:bg-gray-50"}`}>
+                  <tr key={i} className="border-b hover:bg-gray-50">
                     <td className="p-3 flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full inline-block"
                         style={{ backgroundColor: MODEL_COLORS[m.model_name] }} />
                       {m.model_name}
-                      {isBest && !isEnsemble &&
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-1">best</span>}
+                      {isBest &&
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">best</span>}
                     </td>
-                    <td className="p-3 text-right">{m.metrics.rmse.toFixed(2)}</td>
-                    <td className="p-3 text-right">{m.metrics.mae.toFixed(2)}</td>
-                    <td className={`p-3 text-right font-medium ${m.metrics.r2 > 0.9 ? "text-green-600" : m.metrics.r2 > 0 ? "text-yellow-600" : "text-red-500"}`}>
-                      {m.metrics.r2.toFixed(4)}
-                    </td>
-                    <td className="p-3 text-right">{m.metrics.mape?.toFixed(2) ?? "—"}</td>
-                    <td className="p-3 text-right text-gray-400">
-                      {m.model_name === "Ensemble" ? "—" : `${(m.weight * 100).toFixed(1)}%`}
+                    {(view === "train" || view === "both") && (
+                      <>
+                        <td className="p-2 text-right">{m.train_metrics?.rmse?.toFixed(2) ?? "—"}</td>
+                        <td className="p-2 text-right">{m.train_metrics?.mae?.toFixed(2) ?? "—"}</td>
+                        <td className={`p-2 text-right font-medium ${(m.train_metrics?.r2 || 0) > 0.9 ? "text-green-600" : "text-orange-500"}`}>
+                          {m.train_metrics?.r2?.toFixed(4) ?? "—"}
+                        </td>
+                        <td className="p-2 text-right">{m.train_metrics?.mape?.toFixed(2) ?? "—"}</td>
+                      </>
+                    )}
+                    {(view === "test" || view === "both") && (
+                      <>
+                        <td className="p-2 text-right">{m.metrics.rmse.toFixed(2)}</td>
+                        <td className="p-2 text-right">{m.metrics.mae.toFixed(2)}</td>
+                        <td className={`p-2 text-right font-medium ${m.metrics.r2 > 0.9 ? "text-green-600" : m.metrics.r2 > 0 ? "text-yellow-600" : "text-red-500"}`}>
+                          {m.metrics.r2.toFixed(4)}
+                        </td>
+                        <td className="p-2 text-right">{m.metrics.mape?.toFixed(2) ?? "—"}</td>
+                      </>
+                    )}
+                    <td className={`p-3 text-right text-xs font-medium ${status?.color || "text-gray-400"}`}>
+                      {status?.label || "—"}
                     </td>
                   </tr>
                 );
               })}
+              <tr className="border-b bg-purple-50 font-semibold">
+                <td className="p-3 flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full inline-block"
+                    style={{ backgroundColor: MODEL_COLORS.Ensemble }} />
+                  Ensemble
+                </td>
+                {(view === "train" || view === "both") && (
+                  <>
+                    <td className="p-2 text-right text-gray-400">—</td>
+                    <td className="p-2 text-right text-gray-400">—</td>
+                    <td className="p-2 text-right text-gray-400">—</td>
+                    <td className="p-2 text-right text-gray-400">—</td>
+                  </>
+                )}
+                {(view === "test" || view === "both") && (
+                  <>
+                    <td className="p-2 text-right">{ensemble_metrics.rmse.toFixed(2)}</td>
+                    <td className="p-2 text-right">{ensemble_metrics.mae.toFixed(2)}</td>
+                    <td className="p-2 text-right text-green-600">{ensemble_metrics.r2.toFixed(4)}</td>
+                    <td className="p-2 text-right">{ensemble_metrics.mape?.toFixed(2) ?? "—"}</td>
+                  </>
+                )}
+                <td className="p-3 text-right text-xs text-gray-400">weighted blend</td>
+              </tr>
             </tbody>
           </table>
         </div>
       </Card>
 
-      {/* Metrics bar charts */}
-      <Card title="Metric Bar Charts"
-        subtitle="Visual comparison of RMSE, MAE, R², MAPE across all models">
+      {/* Train R² vs Test R² gap chart */}
+      <Card title="Train R² vs Test R² — Generalization Check"
+        subtitle="Smaller gap = better generalization. Large train>test gap means the model memorized training data instead of learning patterns.">
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={gapData} barGap={4}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+            <YAxis domain={[0, 1]} tick={{ fontSize: 11 }} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="Train R²" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Test R²"  fill="#f59e0b" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* Bar charts of all metrics */}
+      <Card title="Test Set Metric Bar Charts"
+        subtitle="Visual comparison of each metric across all four models on the held-out test set">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {Object.entries(METRIC_INFO).map(([key, info]) => {
             const barData = allModels.map(m => ({
@@ -221,14 +330,14 @@ function ModelComparison() {
                   <span className="text-xs text-gray-400 ml-2">{info.desc}</span>
                 </p>
                 <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={barData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                  <BarChart data={barData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip formatter={v => [`${v} ${info.unit}`]} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {barData.map((entry, i) => (
-                        <rect key={i} fill={entry.fill} />
+                        <Cell key={i} fill={entry.fill} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -239,147 +348,39 @@ function ModelComparison() {
         </div>
       </Card>
 
-      {/* Predicted vs Actual — all models */}
+      {/* Predicted vs Actual */}
       <Card title="Predicted vs Actual — All Models"
-        subtitle="Time series comparison of each model's predictions against ground truth">
+        subtitle="Time series comparison on the test set. Solid green = ground truth, dashed lines = individual models, solid purple = ensemble">
         <ResponsiveContainer width="100%" height={400}>
-          <LineChart data={perModelChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+          <LineChart data={perModelChartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="time" tick={{ fontSize: 10 }} interval={Math.floor(perModelChartData.length / 8)} />
-            <YAxis tick={{ fontSize: 11 }} label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
+            <XAxis dataKey="time" tick={{ fontSize: 10 }}
+              interval={Math.floor(perModelChartData.length / 8)} />
+            <YAxis tick={{ fontSize: 11 }}
+              label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
             <Tooltip contentStyle={{ fontSize: 11 }} />
             <Legend />
             <Line type="monotone" dataKey="Actual"   stroke={MODEL_COLORS.Actual}   strokeWidth={2} dot={false} />
             {per_model.map(m => (
               <Line key={m.model_name} type="monotone" dataKey={m.model_name}
-                stroke={MODEL_COLORS[m.model_name]} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                stroke={MODEL_COLORS[m.model_name]} strokeWidth={1.5} dot={false}
+                strokeDasharray="4 2" />
             ))}
             <Line type="monotone" dataKey="Ensemble" stroke={MODEL_COLORS.Ensemble} strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </Card>
 
-      {/* Individual Predicted vs Actual charts */}
-      <Card title="Individual Model Predictions"
-        subtitle="Each model is shown separately against the actual values">
-        <div className="flex flex-col gap-6">
-          {per_model.map((m) => (
-            <div
-              key={m.model_name}
-              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-            >
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-semibold text-gray-800">
-                    {m.model_name}
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                      Train RMSE {m.train_metrics?.rmse.toFixed(2) ?? "—"} W/m² | Predict RMSE {m.metrics.rmse.toFixed(2)} W/m²
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Train MAE {m.train_metrics?.mae.toFixed(2) ?? "—"} W/m² | Predict MAE {m.metrics.mae.toFixed(2)} W/m²
-                    </p>
-                </div>
-                <span
-                  className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: MODEL_COLORS[m.model_name] }}
-                />
-              </div>
-
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={perModelChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 9 }}
-                    interval={Math.floor(perModelChartData.length / 6)}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
-                    label={{ value: "W/m²", angle: -90, position: "insideLeft" }}
-                  />
-                  <Tooltip contentStyle={{ fontSize: 10 }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Line
-                    type="monotone"
-                    dataKey="Actual"
-                    stroke={MODEL_COLORS.Actual}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey={m.model_name}
-                    stroke={MODEL_COLORS[m.model_name]}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ))}
-
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-gray-800">
-                  Ensemble
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Train RMSE {ensemble_train_metrics?.rmse.toFixed(2) ?? "—"} W/m² | Predict RMSE {ensemble_metrics.rmse.toFixed(2)} W/m²
-                </p>
-                <p className="text-xs text-gray-400">
-                  Train MAE {ensemble_train_metrics?.mae.toFixed(2) ?? "—"} W/m² | Predict MAE {ensemble_metrics.mae.toFixed(2)} W/m²
-                </p>
-              </div>
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ backgroundColor: MODEL_COLORS.Ensemble }}
-              />
-            </div>
-
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={perModelChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 9 }}
-                  interval={Math.floor(perModelChartData.length / 6)}
-                />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  label={{ value: "W/m²", angle: -90, position: "insideLeft" }}
-                />
-                <Tooltip contentStyle={{ fontSize: 10 }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line
-                  type="monotone"
-                  dataKey="Actual"
-                  stroke={MODEL_COLORS.Actual}
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Ensemble"
-                  stroke={MODEL_COLORS.Ensemble}
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </Card>
-
-      {/* Residual plot */}
+      {/* Residuals over time */}
       <Card title="Residual Analysis (Actual − Predicted)"
-        subtitle="Positive = under-predicted, Negative = over-predicted. Ideal: residuals centred around 0">
+        subtitle="Positive = under-predicted, Negative = over-predicted. Ideal: residuals scattered around 0">
         <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={residualData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+          <LineChart data={residualData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="time" tick={{ fontSize: 10 }} interval={Math.floor(residualData.length / 8)} />
-            <YAxis tick={{ fontSize: 11 }} label={{ value: "Residual W/m²", angle: -90, position: "insideLeft" }} />
+            <XAxis dataKey="time" tick={{ fontSize: 10 }}
+              interval={Math.floor(residualData.length / 8)} />
+            <YAxis tick={{ fontSize: 11 }}
+              label={{ value: "Residual W/m²", angle: -90, position: "insideLeft" }} />
             <Tooltip contentStyle={{ fontSize: 11 }} />
             <Legend />
             <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="4 2" />
@@ -391,10 +392,29 @@ function ModelComparison() {
         </ResponsiveContainer>
       </Card>
 
+      {/* Radar chart */}
+      <Card title="Model Performance Radar"
+        subtitle="Overall view across all metrics. Larger filled area = better model. RMSE/MAE/MAPE inverted so all metrics point outward for the best">
+        <ResponsiveContainer width="100%" height={340}>
+          <RadarChart data={radarData}>
+            <PolarGrid />
+            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
+            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 10 }} />
+            {allModels.map(m => (
+              <Radar key={m.model_name} name={m.model_name} dataKey={m.model_name}
+                stroke={MODEL_COLORS[m.model_name]} fill={MODEL_COLORS[m.model_name]}
+                fillOpacity={0.15} strokeWidth={2} />
+            ))}
+            <Legend />
+            <Tooltip />
+          </RadarChart>
+        </ResponsiveContainer>
+      </Card>
+
       {/* Feature importance */}
       {featData.length > 0 && (
-        <Card title="Feature Importance (XGBoost + LightGBM average)"
-          subtitle="Top 15 features by averaged gain importance from both tree models">
+        <Card title="Feature Importance (XGBoost + LightGBM Average)"
+          subtitle="Top 15 features by averaged gain importance — these are what the tree models rely on most">
           <ResponsiveContainer width="100%" height={380}>
             <BarChart data={featData} layout="vertical" margin={{ left: 120, right: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -409,7 +429,7 @@ function ModelComparison() {
 
       {/* Ensemble weights */}
       <Card title="Ensemble Weight Distribution"
-        subtitle="Weights computed inversely from validation RMSE — best model gets highest weight automatically">
+        subtitle="Weights computed from validation RMSE — best individual model gets the highest weight automatically">
         <div className="flex gap-4">
           {per_model.map(m => (
             <div key={m.model_name} className="flex-1 rounded-xl p-5 text-center"
@@ -419,8 +439,9 @@ function ModelComparison() {
                 {(m.weight * 100).toFixed(1)}%
               </p>
               <div className="mt-2 text-xs text-gray-400 space-y-0.5">
-                <p>RMSE: {m.metrics.rmse.toFixed(2)}</p>
-                <p>R²: {m.metrics.r2.toFixed(4)}</p>
+                <p>Train R²: {m.train_metrics?.r2?.toFixed(4) ?? "—"}</p>
+                <p>Test R²:  {m.metrics.r2.toFixed(4)}</p>
+                <p>Test RMSE: {m.metrics.rmse.toFixed(2)}</p>
               </div>
             </div>
           ))}

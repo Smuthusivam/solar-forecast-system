@@ -261,4 +261,4 @@ if __name__ == "__main__":
     model2.load("ml_core/saved_models/prophet.json")
     y_pred2 = model2.predict(X_test)
     print(f"\n[Prophet] Reload check — predictions match: {np.allclose(y_pred, y_pred2)}")
-    print("\n✓ ProphetModel passed all checks.")
+    print("\nProphetModel passed all checks.")

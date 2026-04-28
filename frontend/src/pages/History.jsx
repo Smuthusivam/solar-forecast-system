@@ -227,7 +227,7 @@ function History() {
                     >
                       <td className="p-3 font-mono text-gray-400">#{run.run_id}</td>
                       <td className="p-3">
-                        <div className="font-medium text-gray-700 truncate max-w-[160px]"
+                        <div className="font-medium text-gray-700 truncate max-w-40"
                           title={run.filename}>
                           {run.filename}
                         </div>

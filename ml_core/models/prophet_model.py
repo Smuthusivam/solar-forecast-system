@@ -29,19 +29,29 @@ class ProphetModel:
     def __init__(self, params: dict = None):
         """
         Prophet key parameters:
-        - daily_seasonality  : captures the intra-day sun cycle (sunrise → peak → sunset)
-        - yearly_seasonality : captures summer vs winter irradiance differences
-        - weekly_seasonality : off by default — solar irradiance has no weekly pattern
-        - interval_width     : confidence interval width (0.95 = 95% CI bands on dashboard)
-        - changepoint_prior_scale : how flexible the trend is. Higher = more flexible.
-          0.05 is conservative — good for solar which has smooth seasonal trends.
+        - daily_seasonality       : captures the intra-day sun cycle (sunrise → peak → sunset)
+        - yearly_seasonality      : captures summer vs winter irradiance differences
+        - weekly_seasonality      : off — solar irradiance has no weekly pattern
+        - interval_width          : confidence interval width (0.95 = 95% CI bands on dashboard)
+        - seasonality_mode        : "multiplicative" — irradiance amplitude scales seasonally
+                                    (peaks in summer are larger than in winter, not just shifted)
+        - changepoint_prior_scale : trend flexibility. Lowered to 0.01 to stop the trend
+                                    from extrapolating wildly into the held-out test period.
+        - seasonality_prior_scale : how strongly seasonality is fit (10 is Prophet default).
+        - n_changepoints          : reduced from 25 to 15 to further constrain the trend.
+        - changepoint_range       : only place changepoints in first 80% of history —
+                                    prevents the trend from bending sharply near the test boundary.
         """
         default_params = {
             "daily_seasonality":       True,
             "yearly_seasonality":      True,
             "weekly_seasonality":      False,
+            "seasonality_mode":        "multiplicative",
             "interval_width":          0.95,
-            "changepoint_prior_scale": 0.05,
+            "changepoint_prior_scale": 0.01,
+            "seasonality_prior_scale": 10.0,
+            "n_changepoints":          15,
+            "changepoint_range":       0.8,
         }
 
         if params:

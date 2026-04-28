@@ -21,10 +21,11 @@ export async function uploadCSV(file) {
 // ─────────────────────────────────────────
 // 2. RUN FORECAST
 // ─────────────────────────────────────────
-export async function runForecast(sessionId, horizonHours = 24) {
+export async function runForecast(sessionId, horizonHours = 24, trainSize = 80) {
   const response = await API.post("/api/forecast/run", {
     session_id: sessionId,
     horizon_hours: horizonHours,
+    train_size: trainSize,
   });
   return response.data;
 }

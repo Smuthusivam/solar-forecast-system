@@ -57,6 +57,7 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
             col_map        = col_map,
             horizon        = int(request.horizon),
             detection_mode = detection_mode,
+            train_size     = request.train_size,
         )
     except Exception as exc:
         logger.error("Pipeline failed: %s", exc)

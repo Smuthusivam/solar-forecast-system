@@ -12,6 +12,7 @@ function Upload() {
   const [running, setRunning]     = useState(false);
   const [result, setResult]       = useState(null);
   const [error, setError]         = useState(null);
+  const [trainSize, setTrainSize] = useState(80);
 
   // ── File picked from input ───────────────────────
   function handleFileChange(e) {
@@ -68,7 +69,7 @@ function Upload() {
     setRunning(true);
 
     try {
-      const forecast = await runForecast(result.session_id, 24);
+      const forecast = await runForecast(result.session_id, 24, trainSize);
       // Pass forecast data to Dashboard via navigation state
       navigate("/dashboard", { state: { forecast, result } });
     } catch (err) {
@@ -207,6 +208,35 @@ function Upload() {
                 </table>
               </div>
             )}
+
+            {/* Train / Test Split Selector */}
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-gray-700">Train / Test Split</p>
+                <p className="text-xs text-gray-400">
+                  Train <span className="font-semibold text-gray-600">{trainSize}%</span>
+                  {" "}/ Test <span className="font-semibold text-gray-600">{100 - trainSize}%</span>
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {[70, 75, 80, 85, 90].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setTrainSize(pct)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition
+                      ${trainSize === pct
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                      }`}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Higher training % gives the model more data to learn from; lower gives a larger test set for evaluation.
+              </p>
+            </div>
 
             {/* Run Forecast Button */}
             <button

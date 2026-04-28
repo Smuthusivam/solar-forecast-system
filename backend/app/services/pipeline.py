@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-TEST_SIZE   = 0.20   # last 20% of data held out for evaluation
+TEST_SIZE   = 0.20   # default — overridden per-request via train_size
 TARGET_COL  = "irradiance"
 PROPHET_DS  = "ds"
 PROPHET_Y   = "y"
@@ -306,6 +306,7 @@ def run_pipeline(
     col_map:        dict,
     horizon:        int = 24,
     detection_mode: str = "direct",
+    train_size:     int = 80,
 ) -> dict[str, Any]:
     """
     Full ML pipeline: feature engineering → train → predict → ensemble.
@@ -335,7 +336,7 @@ def run_pipeline(
     )
 
     # ── Step 1: Train / test split ────────────────────────────────────────────
-    train_df, test_df = _time_split(df)
+    train_df, test_df = _time_split(df, test_size=1.0 - train_size / 100.0)
 
     # ── Step 2: Feature engineering (tree models only) ────────────────────────
     # Note: build_features expects the index to already be a DatetimeIndex

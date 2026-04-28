@@ -104,6 +104,11 @@ class ForecastRequest(BaseModel):
     """
     session_id: str
     horizon:    ForecastHorizon = ForecastHorizon.H24
+    train_size: int = Field(
+        80,
+        ge=50, le=95,
+        description="Percentage of data used for training (50–95). Remainder is the test set.",
+    )
 
 
 class ModelMetrics(BaseModel):

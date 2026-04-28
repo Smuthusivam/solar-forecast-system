@@ -29,14 +29,18 @@ class XGBoostModel:
         If None, the project defaults from the spec are used.
         """
         default_params = {
-            "n_estimators":  500,
-            "learning_rate": 0.05,
-            "max_depth":     6,
-            "subsample":     0.8,       # use 80% of rows per tree — reduces overfitting
-            "colsample_bytree": 0.8,    # use 80% of features per tree
-            "random_state":  42,
-            "n_jobs":        -1,        # use all CPU cores
-            "verbosity":     0,         # suppress training logs
+            "n_estimators":     600,    # more trees to compensate for lower learning rate
+            "learning_rate":    0.01,   # very slow — strongest defense against memorization
+            "max_depth":        4,      # shallow trees — caps interaction complexity
+            "min_child_weight": 10,     # require sizeable leaves — ignore noise
+            "gamma":            0.5,    # aggressive pruning of weak splits
+            "subsample":        0.7,    # smaller row subsample — more variance per tree
+            "colsample_bytree": 0.7,    # smaller feature subsample
+            "reg_alpha":        0.5,    # L1 regularization (stronger)
+            "reg_lambda":       3.0,    # L2 regularization (stronger)
+            "random_state":     42,
+            "n_jobs":           -1,
+            "verbosity":        0,
         }
 
         if params:

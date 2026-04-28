@@ -26,14 +26,20 @@ class LightGBMModel:
 
     def __init__(self, params: dict = None):
         default_params = {
-            "n_estimators":     500,
-            "learning_rate":    0.05,
-            "num_leaves":       63,      # main complexity param (replaces max_depth)
-            "subsample":        0.8,
-            "colsample_bytree": 0.8,
-            "random_state":     42,
-            "n_jobs":           -1,
-            "verbosity":        -1,      # suppress all LightGBM logs
+            "n_estimators":      600,    # more trees to compensate for lower learning rate
+            "learning_rate":     0.01,   # very slow — strongest defense against memorization
+            "num_leaves":        15,     # tightly capped — was 63, then 31, now 15
+            "max_depth":         4,      # shallow trees — caps interaction complexity
+            "min_child_samples": 50,     # require sizeable leaves — ignore noise
+            "min_split_gain":    0.1,    # aggressive pruning of weak splits
+            "subsample":         0.7,    # smaller row subsample — more variance per tree
+            "subsample_freq":    1,      # required for subsample to take effect in LightGBM
+            "colsample_bytree":  0.7,    # smaller feature subsample
+            "reg_alpha":         0.5,    # L1 regularization (stronger)
+            "reg_lambda":        3.0,    # L2 regularization (stronger)
+            "random_state":      42,
+            "n_jobs":            -1,
+            "verbosity":         -1,
         }
 
         if params:

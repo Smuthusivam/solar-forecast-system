@@ -1,7 +1,4 @@
-"""
-export.py — GET /api/export/csv
-            GET /api/export/pdf
-"""
+# GET /api/export/csv and GET /api/export/pdf — download forecast results.
 
 from __future__ import annotations
 
@@ -21,10 +18,6 @@ from app.services.pipeline import run_pipeline
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Storage
-# ─────────────────────────────────────────────────────────────────────────────
-
 _BACKEND_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
@@ -33,7 +26,7 @@ os.makedirs(_EXPORTS_DIR, exist_ok=True)
 
 
 def _save_export(filename: str, data: bytes) -> str:
-    """Save export file to storage/exports/ and return the path."""
+    # Save the export file to storage/exports/ and return its path.
     filepath = os.path.join(_EXPORTS_DIR, filename)
     with open(filepath, "wb") as f:
         f.write(data)
@@ -41,16 +34,9 @@ def _save_export(filename: str, data: bytes) -> str:
     return filepath
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CSV export
-# ─────────────────────────────────────────────────────────────────────────────
-
 @router.get("/export/csv")
 def export_csv(session_id: str, horizon: int = 24):
-    """
-    Run pipeline and return forecast results as a downloadable CSV.
-    Also saves a copy to storage/exports/.
-    """
+    # Run the pipeline and return forecast results as a downloadable CSV.
     session = get_session(session_id)
     df      = session["df"]
     col_map = session["detected_cols"]
@@ -60,7 +46,6 @@ def export_csv(session_id: str, horizon: int = 24):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-    # Build DataFrame from forecast points
     rows = [
         {
             "timestamp": p["timestamp"],
@@ -73,12 +58,10 @@ def export_csv(session_id: str, horizon: int = 24):
     ]
     export_df = pd.DataFrame(rows)
 
-    # Serialise to bytes
     buffer = io.StringIO()
     export_df.to_csv(buffer, index=False)
     csv_bytes = buffer.getvalue().encode()
 
-    # Save to disk
     filename = f"solar_forecast_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
     _save_export(filename, csv_bytes)
 
@@ -89,17 +72,9 @@ def export_csv(session_id: str, horizon: int = 24):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PDF export
-# ─────────────────────────────────────────────────────────────────────────────
-
 @router.get("/export/pdf")
 def export_pdf(session_id: str, horizon: int = 24):
-    """
-    Generate a PDF report and return as downloadable file.
-    Also saves a copy to storage/exports/.
-    Uses ReportLab if installed, falls back to plain text.
-    """
+    # Generate a PDF report; falls back to plain text if ReportLab is not installed.
     session  = get_session(session_id)
     df       = session["df"]
     col_map  = session["detected_cols"]
@@ -114,7 +89,6 @@ def export_pdf(session_id: str, horizon: int = 24):
     em           = result["ensemble_metrics"]
     pdf_filename = f"solar_forecast_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
 
-    # ── ReportLab PDF ─────────────────────────────────────────────────────────
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
@@ -128,19 +102,16 @@ def export_pdf(session_id: str, horizon: int = 24):
         styles = getSampleStyleSheet()
         story  = []
 
-        # ── Title ─────────────────────────────────────────────────────────────
         story.append(Paragraph("Solar Irradiance Forecast Report", styles["Title"]))
         story.append(Spacer(1, 12))
 
-        # ── Summary ───────────────────────────────────────────────────────────
-        story.append(Paragraph(f"<b>File:</b> {filename}",                              styles["Normal"]))
+        story.append(Paragraph(f"<b>File:</b> {filename}",                                          styles["Normal"]))
         story.append(Paragraph(f"<b>Generated:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]))
-        story.append(Paragraph(f"<b>Horizon:</b> {horizon} hours",                      styles["Normal"]))
-        story.append(Paragraph(f"<b>Detection mode:</b> {result['detection_mode']}",    styles["Normal"]))
-        story.append(Paragraph(f"<b>Rows processed:</b> {result['rows_processed']}",    styles["Normal"]))
+        story.append(Paragraph(f"<b>Horizon:</b> {horizon} hours",                                  styles["Normal"]))
+        story.append(Paragraph(f"<b>Detection mode:</b> {result['detection_mode']}",                styles["Normal"]))
+        story.append(Paragraph(f"<b>Rows processed:</b> {result['rows_processed']}",                styles["Normal"]))
         story.append(Spacer(1, 12))
 
-        # ── Ensemble metrics ──────────────────────────────────────────────────
         story.append(Paragraph("Ensemble Model Performance", styles["Heading2"]))
         metrics_data = [
             ["Metric", "Value"],
@@ -162,7 +133,6 @@ def export_pdf(session_id: str, horizon: int = 24):
         story.append(t)
         story.append(Spacer(1, 12))
 
-        # ── Per-model table ───────────────────────────────────────────────────
         story.append(Paragraph("Individual Model Results", styles["Heading2"]))
         model_data = [["Model", "RMSE", "MAE", "R²", "Weight"]]
         for m in result["per_model"]:
@@ -186,7 +156,6 @@ def export_pdf(session_id: str, horizon: int = 24):
         story.append(t2)
         story.append(Spacer(1, 12))
 
-        # ── Anomaly summary ───────────────────────────────────────────────────
         story.append(Paragraph("Anomaly Detection Summary", styles["Heading2"]))
         story.append(Paragraph(
             f"Total anomalies detected: {anomalies['anomaly_count']} "
@@ -194,13 +163,12 @@ def export_pdf(session_id: str, horizon: int = 24):
             styles["Normal"],
         ))
 
-        # ── Top anomalies table ───────────────────────────────────────────────
         if anomalies["anomalies"]:
             story.append(Spacer(1, 8))
             anom_data = [["Timestamp", "Value (W/m²)", "Expected", "Severity", "Method"]]
-            for a in anomalies["anomalies"][:10]:   # show top 10
+            for a in anomalies["anomalies"][:10]:
                 anom_data.append([
-                    a["timestamp"][:16],   # trim to minute precision
+                    a["timestamp"][:16],
                     f"{a['value']:.1f}",
                     f"{a['expected']:.1f}",
                     a["severity"],
@@ -221,7 +189,6 @@ def export_pdf(session_id: str, horizon: int = 24):
         doc.build(story)
         pdf_bytes = buffer.getvalue()
 
-        # Save to disk
         _save_export(pdf_filename, pdf_bytes)
 
         return StreamingResponse(
@@ -230,8 +197,8 @@ def export_pdf(session_id: str, horizon: int = 24):
             headers    = {"Content-Disposition": f"attachment; filename={pdf_filename}"},
         )
 
-    # ── Plain text fallback ───────────────────────────────────────────────────
     except ImportError:
+        # reportlab not installed — return a plain text report instead
         logger.warning("reportlab not installed — returning plain text report")
 
         text = (

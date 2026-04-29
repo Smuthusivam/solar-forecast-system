@@ -1,7 +1,4 @@
-"""
-history.py — GET /api/history
-             GET /api/history/{run_id}
-"""
+# GET /api/history and GET /api/history/{run_id}.
 
 from __future__ import annotations
 

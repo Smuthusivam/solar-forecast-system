@@ -1,6 +1,4 @@
-"""
-upload.py — POST /api/upload
-"""
+# POST /api/upload — parse CSV, detect columns via Claude AI, preprocess, store session.
 
 from __future__ import annotations
 
@@ -21,9 +19,6 @@ from app.services.preprocessing import preprocess
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Storage paths
-# ─────────────────────────────────────────────────────────────────────────────
 _BACKEND_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
@@ -31,13 +26,11 @@ _UPLOADS_DIR = os.path.join(_BACKEND_DIR, "storage", "uploads")
 os.makedirs(_UPLOADS_DIR, exist_ok=True)
 
 def get_storage_dirs() -> dict[str, str]:
-    return {
-        "uploads": _UPLOADS_DIR,
-    }
+    return {"uploads": _UPLOADS_DIR}
 
 
 def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
-    """Save raw CSV to storage/uploads/<session_id[:8]>_<filename>"""
+    # Save raw CSV to storage/uploads/<session_id[:8]>_<filename>.
     safe_name = f"{session_id[:8]}_{filename}"
     filepath  = os.path.join(_UPLOADS_DIR, safe_name)
     with open(filepath, "wb") as f:
@@ -46,16 +39,13 @@ def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
     return filepath
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# In-memory session store
-# ─────────────────────────────────────────────────────────────────────────────
-
 SESSION_TTL_HOURS = 2
 
 _sessions: dict[str, dict[str, Any]] = {}
 
 
 def get_session(session_id: str) -> dict[str, Any]:
+    # Look up a session and raise 404/410 if missing or expired.
     session = _sessions.get(session_id)
 
     if not session:
@@ -83,6 +73,7 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 def _purge_expired_sessions() -> None:
+    # Remove sessions past their TTL to avoid unbounded memory growth.
     now     = datetime.utcnow()
     expired = [sid for sid, s in _sessions.items() if now > s["expires_at"]]
     for sid in expired:
@@ -91,14 +82,9 @@ def _purge_expired_sessions() -> None:
         logger.info("Purged %d expired sessions", len(expired))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Upload endpoint
-# ─────────────────────────────────────────────────────────────────────────────
-
 @router.post("/upload", response_model=UploadResponse)
 async def upload_csv(file: UploadFile = File(...)):
 
-    # ── Validate file type ────────────────────────────────────────────────────
     if not file.filename.endswith(".csv"):
         raise HTTPException(
             status_code=400,
@@ -109,7 +95,6 @@ async def upload_csv(file: UploadFile = File(...)):
             },
         )
 
-    # ── Read file ─────────────────────────────────────────────────────────────
     file_bytes = await file.read()
 
     if len(file_bytes) == 0:
@@ -124,16 +109,10 @@ async def upload_csv(file: UploadFile = File(...)):
 
     logger.info("Upload received: %s (%d bytes)", file.filename, len(file_bytes))
 
-    # ── Quick parse for column detection ──────────────────────────────────────
     try:
         raw_df = pd.read_csv(io.BytesIO(file_bytes), nrows=10)
 
-        # ── Detect NSRDB-style multi-row header ───────────────────────────────
-        # NSRDB structure:
-        #   Row 0 → metadata column names  (Source, Location ID, GHI Units...)
-        #   Row 1 → metadata values + units (NSRDB, 223700, w/m2, c...)
-        #   Row 2 → REAL column names       (Year, Month, Day, Hour, GHI...)
-        #   Row 3+→ actual data
+        # NSRDB files have a metadata row before the real column headers
         meta_indicators = ["source", "location id", "version", "units"]
         col_lower = [str(c).lower() for c in raw_df.columns]
 
@@ -154,7 +133,6 @@ async def upload_csv(file: UploadFile = File(...)):
             },
         )
 
-    # ── AI column detection ───────────────────────────────────────────────────
     try:
         detection = detect_columns(columns, sample_rows)
     except Exception as exc:
@@ -168,7 +146,6 @@ async def upload_csv(file: UploadFile = File(...)):
             },
         )
 
-    # ── Preprocessing ─────────────────────────────────────────────────────────
     try:
         df, meta = preprocess(
             file_bytes     = file_bytes,
@@ -185,12 +162,10 @@ async def upload_csv(file: UploadFile = File(...)):
             },
         )
 
-    # ── Generate session ID + save file to disk ───────────────────────────────
     _purge_expired_sessions()
     session_id = str(uuid.uuid4())
     filepath   = _save_upload(session_id, file.filename, file_bytes)
 
-    # ── Store session ─────────────────────────────────────────────────────────
     _sessions[session_id] = {
         "df":             df,
         "detected_cols":  detection["detected"],
@@ -206,7 +181,6 @@ async def upload_csv(file: UploadFile = File(...)):
         session_id, len(df), detection["detection_mode"],
     )
 
-    # ── Build response ────────────────────────────────────────────────────────
     detected_cols_schema = DetectedColumns(**detection["detected"])
 
     return UploadResponse(

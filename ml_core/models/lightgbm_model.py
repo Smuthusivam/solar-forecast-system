@@ -9,34 +9,25 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from ml_core.feature_engineering import build_features, get_feature_columns
 
 
-# ─────────────────────────────────────────────
-# SECTION 1 — Model Class
-# ─────────────────────────────────────────────
-
 class LightGBMModel:
     """
     LightGBM wrapper for solar irradiance forecasting.
-
-    LightGBM is 3-5x faster than XGBoost on the same data because it
-    grows trees leaf-wise (best-first) rather than level-wise.
-    It uses num_leaves instead of max_depth to control complexity.
-
-    Same interface as XGBoostModel — ensemble.py calls both identically.
+    Same interface as XGBoostModel so ensemble.py can call both identically.
     """
 
     def __init__(self, params: dict = None):
         default_params = {
-            "n_estimators":      600,    # more trees to compensate for lower learning rate
-            "learning_rate":     0.01,   # very slow — strongest defense against memorization
-            "num_leaves":        15,     # tightly capped — was 63, then 31, now 15
-            "max_depth":         4,      # shallow trees — caps interaction complexity
-            "min_child_samples": 50,     # require sizeable leaves — ignore noise
-            "min_split_gain":    0.1,    # aggressive pruning of weak splits
-            "subsample":         0.7,    # smaller row subsample — more variance per tree
+            "n_estimators":      600,
+            "learning_rate":     0.01,
+            "num_leaves":        15,     # tightly capped to prevent overfitting
+            "max_depth":         4,
+            "min_child_samples": 50,
+            "min_split_gain":    0.1,
+            "subsample":         0.7,
             "subsample_freq":    1,      # required for subsample to take effect in LightGBM
-            "colsample_bytree":  0.7,    # smaller feature subsample
-            "reg_alpha":         0.5,    # L1 regularization (stronger)
-            "reg_lambda":        3.0,    # L2 regularization (stronger)
+            "colsample_bytree":  0.7,
+            "reg_alpha":         0.5,
+            "reg_lambda":        3.0,
             "random_state":      42,
             "n_jobs":            -1,
             "verbosity":         -1,
@@ -49,45 +40,22 @@ class LightGBMModel:
         self.model           = LGBMRegressor(**self.params)
         self.feature_columns = None
 
-
-    # ─────────────────────────────────────────────
-    # SECTION 2 — Train
-    # ─────────────────────────────────────────────
-
     def train(self, X_train: pd.DataFrame, y_train: pd.Series) -> None:
-        """
-        Fit LightGBM on the training feature matrix.
-        Identical signature to XGBoostModel.train().
-        """
+        # Fit LightGBM on the training feature matrix.
         self.feature_columns = list(X_train.columns)
         self.model.fit(X_train, y_train)
         print(f"[LightGBM] Trained on {len(X_train)} rows, {len(self.feature_columns)} features.")
 
-
-    # ─────────────────────────────────────────────
-    # SECTION 3 — Predict
-    # ─────────────────────────────────────────────
-
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Generate irradiance predictions (W/m²).
-        Clips negatives to 0 — same reasoning as XGBoost.
-        """
+        # Generate predictions; clips negatives to 0 since irradiance can't be negative.
         if self.feature_columns is None:
             raise RuntimeError("Model has not been trained yet. Call train() first.")
 
         preds = self.model.predict(X[self.feature_columns])
         return np.clip(preds, 0, None)
 
-
-    # ─────────────────────────────────────────────
-    # SECTION 4 — Evaluate
-    # ─────────────────────────────────────────────
-
     def evaluate(self, X_test: pd.DataFrame, y_test: pd.Series) -> dict:
-        """
-        Predict on test set and return all four metrics as a dict.
-        """
+        # Predict on the test set and return all four metrics.
         from ml_core.evaluate import compute_all
 
         y_pred  = self.predict(X_test)
@@ -95,29 +63,14 @@ class LightGBMModel:
         metrics["model"] = "LightGBM"
         return metrics
 
-
-    # ─────────────────────────────────────────────
-    # SECTION 5 — Feature Importance
-    # ─────────────────────────────────────────────
-
     def get_feature_importance(self) -> dict:
-        """
-        Return feature importances sorted descending.
-        LightGBM uses split count by default — we switch to 'gain'
-        to stay consistent with XGBoost (gain = quality of splits,
-        not just how often a feature was used).
-        """
+        # Return gain-based feature importances sorted descending.
         if self.feature_columns is None:
             raise RuntimeError("Model has not been trained yet.")
 
         scores     = self.model.booster_.feature_importance(importance_type="gain")
         importance = dict(zip(self.feature_columns, scores))
         return dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
-
-
-    # ─────────────────────────────────────────────
-    # SECTION 6 — Save / Load
-    # ─────────────────────────────────────────────
 
     def save(self, path: str) -> None:
         payload = {
@@ -136,14 +89,9 @@ class LightGBMModel:
         print(f"[LightGBM] Model loaded from {path}")
 
 
-# ─────────────────────────────────────────────
-# SECTION 7 — Quick Test
-# ─────────────────────────────────────────────
-
 if __name__ == "__main__":
     from ml_core.feature_engineering import build_features, get_feature_columns
 
-    # ── Synthetic dataset — 30 days hourly ──
     periods = 24 * 30
     idx     = pd.date_range("2024-01-01", periods=periods, freq="h")
     hours   = idx.hour
@@ -173,27 +121,23 @@ if __name__ == "__main__":
     X_train, X_test = X.iloc[:split], X.iloc[split:]
     y_train, y_test = y.iloc[:split], y.iloc[split:]
 
-    # ── Train ──
     model = LightGBMModel()
     model.train(X_train, y_train)
 
-    # ── Predict ──
     y_pred = model.predict(X_test)
     print(f"\n[LightGBM] Sample predictions (first 5):")
     for actual, pred in zip(y_test.values[:5], y_pred[:5]):
         print(f"  actual={actual:.1f}  predicted={pred:.1f}")
 
-    # ── Feature importance ──
     importance = model.get_feature_importance()
     print(f"\n[LightGBM] Top 5 features by importance:")
     for feat, score in list(importance.items())[:5]:
         print(f"  {feat}: {score:.4f}")
 
-    # ── Save and reload ──
     os.makedirs("ml_core/saved_models", exist_ok=True)
     model.save("ml_core/saved_models/lightgbm.pkl")
 
-    model2 = LightGBMModel()
+    model2  = LightGBMModel()
     model2.load("ml_core/saved_models/lightgbm.pkl")
     y_pred2 = model2.predict(X_test)
     print(f"\n[LightGBM] Reload check — predictions match: {np.allclose(y_pred, y_pred2)}")

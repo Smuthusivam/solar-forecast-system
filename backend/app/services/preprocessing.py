@@ -1,28 +1,4 @@
-"""
-preprocessing.py — Data cleaning, validation, and GHI estimation.
-
-Responsibilities:
-  1. Parse and validate the uploaded CSV
-  2. Standardise column names using the AI detector mapping
-  3. Clean the data (missing values, outliers, duplicates)
-  4. Parse timestamps into a proper DatetimeIndex
-  5. Estimate GHI from weather variables if no irradiance column exists
-     (Angstrom-Prescott physics-informed formula)
-  6. Return a clean DataFrame ready for feature_engineering.py
-
-Two execution modes:
-  direct    → irradiance column found, clean and use it directly
-  estimated → no irradiance column, compute GHI from weather variables
-
-The output DataFrame always has these standardised columns:
-  - timestamp     (DatetimeIndex)
-  - irradiance    (W/m², float)
-  - temperature   (°C, float)      if available
-  - humidity      (%, float)       if available
-  - wind_speed    (m/s, float)     if available
-  - cloud_cover   (%, float)       if available
-  - sunshine_hours (hours, float)  if available
-"""
+# Handles CSV parsing, cleaning, and GHI estimation before feature engineering.
 
 from __future__ import annotations
 
@@ -35,46 +11,29 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
+# Physical limits — anything outside these is a sensor error, not real data
+IRRADIANCE_MIN =    0.0
+IRRADIANCE_MAX = 1400.0
 
-# Physical bounds for irradiance — values outside are physically impossible
-IRRADIANCE_MIN =    0.0   # W/m²  (can't be negative)
-IRRADIANCE_MAX = 1400.0   # W/m²  (extraterrestrial solar constant ~1361 W/m²)
+TEMP_MIN,  TEMP_MAX  = -50.0,  60.0
+HUM_MIN,   HUM_MAX   =   0.0, 100.0
+WIND_MIN,  WIND_MAX  =   0.0,  75.0
+CLOUD_MIN, CLOUD_MAX =   0.0, 100.0
+SUN_MIN,   SUN_MAX   =   0.0,  24.0
 
-# Bounds for other weather variables
-TEMP_MIN,  TEMP_MAX  = -50.0,   60.0   # °C
-HUM_MIN,   HUM_MAX   =   0.0,  100.0   # %
-WIND_MIN,  WIND_MAX  =   0.0,   75.0   # m/s
-CLOUD_MIN, CLOUD_MAX =   0.0,  100.0   # %
-SUN_MIN,   SUN_MAX   =   0.0,   24.0   # hours
+# Need at least 2 days of hourly data to train reliably
+MIN_ROWS = 48
 
-# Minimum rows needed to train ML models reliably
-MIN_ROWS = 48   # 2 days of hourly data
+SOLAR_CONSTANT = 1000.0  # W/m² at Earth's surface
 
-# Angstrom-Prescott solar constant at Earth's surface
-SOLAR_CONSTANT = 1000.0   # W/m²
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. CSV parsing
-# ─────────────────────────────────────────────────────────────────────────────
 
 def parse_csv(file_bytes: bytes) -> pd.DataFrame:
-    """
-    Parse raw CSV bytes. Handles standard CSVs and
-    special formats like NSRDB which have multi-row headers.
-    """
+    # Try multiple encodings and separators; handles NSRDB multi-row headers too.
     encodings  = ["utf-8", "utf-8-sig", "latin-1", "iso-8859-1"]
     separators = [",", ";", "\t", "|"]
 
     def _looks_like_metadata(df: pd.DataFrame) -> bool:
-        """
-        Detect if the first row is metadata, not real column names.
-        Signs: columns named 'Source', 'Location ID', 'Version',
-               or column values contain 'Units' suffix.
-        """
+        # True if the first row looks like a metadata header, not column names.
         meta_indicators = ["source", "location id", "version", "units"]
         col_lower = [str(c).lower() for c in df.columns]
         return any(ind in col_lower for ind in meta_indicators)
@@ -82,7 +41,6 @@ def parse_csv(file_bytes: bytes) -> pd.DataFrame:
     for encoding in encodings:
         for sep in separators:
             try:
-                # ── Try standard parse first ──────────────────────────────
                 df = pd.read_csv(
                     io.BytesIO(file_bytes),
                     sep=sep,
@@ -93,22 +51,18 @@ def parse_csv(file_bytes: bytes) -> pd.DataFrame:
                 if df.shape[1] < 2:
                     continue
 
-                # ── Detect NSRDB-style multi-row header ───────────────────
                 if _looks_like_metadata(df):
                     logger.info("Detected multi-row header format (e.g. NSRDB) — skipping metadata row")
 
-                    # Skip row 0 (metadata), use row 1 as headers
                     df = pd.read_csv(
                         io.BytesIO(file_bytes),
                         sep=sep,
                         encoding=encoding,
                         low_memory=False,
-                        skiprows=[0,1],
+                        skiprows=[0, 1],
                     )
 
-                    # ── Detect units row (row after headers) ──────────────
-                    # NSRDB has a 3rd row with unit labels like "w/m2", "%", "c"
-                    # These are not data — skip them too
+                    # NSRDB sometimes has a units row (e.g. "w/m2", "%") right after headers
                     first_row = df.iloc[0].astype(str).str.lower()
                     unit_indicators = ["w/m2", "w/m²", "%", " c", "m/s", "degree", "mbar", "cm", "kwh"]
                     is_units_row = any(
@@ -118,8 +72,6 @@ def parse_csv(file_bytes: bytes) -> pd.DataFrame:
 
                     if is_units_row:
                         logger.info("Units row detected in CSV — skipping it too")
-                        # Skip row 0 (metadata) AND row 2 (units)
-                        # Row 1 becomes headers, row 3+ becomes data
                         df = pd.read_csv(
                             io.BytesIO(file_bytes),
                             sep=sep,
@@ -128,7 +80,6 @@ def parse_csv(file_bytes: bytes) -> pd.DataFrame:
                             skiprows=[0, 2],
                         )
 
-                # ── Accept if enough rows and columns ─────────────────────
                 if df.shape[1] >= 2 and len(df) >= MIN_ROWS:
                     logger.info(
                         "CSV parsed: %d rows × %d cols (encoding=%s sep=%r)",
@@ -143,31 +94,19 @@ def parse_csv(file_bytes: bytes) -> pd.DataFrame:
         f"Could not parse the CSV file. "
         f"Ensure it has at least {MIN_ROWS} rows and uses a standard format."
     )
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Column standardisation
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def standardise_columns(
     df:      pd.DataFrame,
     mapping: dict[str, str | None],
 ) -> pd.DataFrame:
-    """
-    Rename detected columns to standardised internal names.
-
-    Example:
-        mapping = {"irradiance": "GHI", "temperature": "Temp_C", ...}
-        → renames "GHI" → "irradiance", "Temp_C" → "temperature"
-
-    Columns not in the mapping are dropped — we only keep what we need.
-    """
-    # Reverse the mapping: original_name → standard_name
+    # Rename detected columns to internal standard names and drop everything else.
     rename_map = {
         original: standard
         for standard, original in mapping.items()
         if original is not None
     }
 
-    # Keep only columns that appear in the mapping
     cols_to_keep = [c for c in df.columns if c in rename_map]
     df = df[cols_to_keep].rename(columns=rename_map)
 
@@ -175,18 +114,11 @@ def standardise_columns(
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Timestamp parsing
-# ─────────────────────────────────────────────────────────────────────────────
-
 def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert the 'timestamp' column to a proper DatetimeIndex.
-    Handles ANY format through 4 progressive layers — never crashes.
-    """
-     # ── NSRDB-style: separate Year/Month/Day/Hour columns ─────────────────────
+    # Convert the timestamp column to a DatetimeIndex using multiple fallback layers.
     col_lower_map = {c.strip().lower(): c for c in df.columns}
 
+    # NSRDB stores date parts in separate Year/Month/Day/Hour columns
     if all(k in col_lower_map for k in ["year", "month", "day", "hour"]):
         logger.info("Detected NSRDB-style date columns — combining Year/Month/Day/Hour")
         try:
@@ -202,15 +134,14 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
 
             df["timestamp"] = pd.to_datetime(build)
 
-            # Drop the individual date columns
-            drop_cols = [col_lower_map[k] for k in ["year","month","day","hour"] if k in col_lower_map]
+            drop_cols = [col_lower_map[k] for k in ["year", "month", "day", "hour"] if k in col_lower_map]
             if minute_col:
                 drop_cols.append(minute_col)
             df = df.drop(columns=drop_cols, errors="ignore")
 
             df = df.set_index("timestamp").sort_index()
             df = df[~df.index.duplicated(keep="last")]
-            df = df[df.index.notna()]   # drop NaT rows
+            df = df[df.index.notna()]
 
             logger.info("Timestamp index: %s → %s (%d rows)", df.index[0], df.index[-1], len(df))
             return df
@@ -220,17 +151,13 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
 
     if "timestamp" not in df.columns:
         logger.warning("No timestamp column found — generating synthetic hourly index")
-        df["timestamp"] = pd.date_range(
-            start="2020-01-01",
-            periods=len(df),
-            freq="h",
-        )
+        df["timestamp"] = pd.date_range(start="2020-01-01", periods=len(df), freq="h")
         df = df.set_index("timestamp").sort_index()
         return df
 
     parsed = None
 
-    # ── Layer 1: pandas auto-detect ───────────────────────────────────────────
+    # Layer 1: let pandas figure out the format automatically
     try:
         parsed = pd.to_datetime(df["timestamp"], infer_datetime_format=True)
         if parsed.isna().sum() / len(parsed) < 0.5:
@@ -238,7 +165,7 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         parsed = None
 
-    # ── Layer 2: explicit common formats ──────────────────────────────────────
+    # Layer 2: try common explicit formats one by one
     if parsed is None or parsed.isna().all():
         common_formats = [
             "%Y-%m-%d %H:%M:%S",
@@ -265,7 +192,7 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
             except Exception:
                 continue
 
-    # ── Layer 3: dateutil parser (handles almost any human format) ────────────
+    # Layer 3: dateutil fuzzy parser handles almost any human-readable format
     if parsed is None or parsed.isna().all():
         try:
             from dateutil import parser as dateutil_parser
@@ -279,12 +206,11 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
             logger.warning("dateutil parser failed: %s", exc)
             parsed = None
 
-    # ── Layer 4: Unix timestamp (seconds or milliseconds) ─────────────────────
+    # Layer 4: treat as Unix timestamp (seconds or milliseconds)
     if parsed is None or parsed.isna().all():
         try:
             numeric = pd.to_numeric(df["timestamp"], errors="coerce")
             if numeric.notna().sum() > len(df) * 0.5:
-                # Detect milliseconds vs seconds
                 if numeric.median() > 1e10:
                     parsed = pd.to_datetime(numeric, unit="ms")
                 else:
@@ -293,16 +219,13 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             parsed = None
 
-    # ── Layer 5: synthetic fallback — never crash ─────────────────────────────
+    # Layer 5: nothing worked — generate a synthetic index so we never crash
     if parsed is None or parsed.isna().all():
-        logger.warning(
-            "Could not parse timestamps — generating synthetic hourly index"
-        )
+        logger.warning("Could not parse timestamps — generating synthetic hourly index")
         parsed = pd.date_range(start="2020-01-01", periods=len(df), freq="h")
 
     df["timestamp"] = parsed
 
-    # ── Set as index, sort, remove duplicates ─────────────────────────────────
     df = df.set_index("timestamp").sort_index()
 
     n_dupes = df.index.duplicated().sum()
@@ -310,29 +233,19 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
         logger.warning("Removed %d duplicate timestamps", n_dupes)
         df = df[~df.index.duplicated(keep="last")]
 
-    logger.info(
-        "Timestamp index: %s → %s (%d rows)",
-        df.index[0], df.index[-1], len(df),
-    )
+    logger.info("Timestamp index: %s → %s (%d rows)", df.index[0], df.index[-1], len(df))
     return df
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Type coercion + bounds cleaning
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _coerce_numeric(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert all non-index columns to float, coercing errors to NaN."""
+    # Force all columns to float; non-numeric strings become NaN.
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
 
 def _clip_to_bounds(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clip physical variables to their valid ranges.
-    Values outside the range are set to NaN (not clipped to boundary)
-    because a value of -50 W/m² is not "close to 0" — it's a sensor error.
-    """
+    # Out-of-range values are sensor errors, so replace them with NaN rather than clamping.
     bounds = {
         "irradiance":     (IRRADIANCE_MIN, IRRADIANCE_MAX),
         "temperature":    (TEMP_MIN,  TEMP_MAX),
@@ -356,15 +269,7 @@ def _clip_to_bounds(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fill_missing(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Fill missing values using time-aware interpolation.
-
-    Strategy per column:
-      irradiance    → linear interpolation (short gaps) + forward fill (longer gaps)
-      weather cols  → linear interpolation is safe (weather changes gradually)
-      Night-time irradiance gaps → fill with 0 (it's dark, not missing)
-    """
-     # Drop NaT index rows before interpolation — pandas can't interpolate with NaT in index
+    # Interpolate short gaps, forward/back fill the rest, zero-fill night irradiance.
     df = df[df.index.notna()]
     if len(df) == 0:
         return df
@@ -378,101 +283,59 @@ def _fill_missing(df: pd.DataFrame) -> pd.DataFrame:
         logger.info("Column '%s': %.1f%% missing values", col, pct_missing)
 
         if pct_missing > 50:
-            logger.warning(
-                "Column '%s' is >50%% missing — results may be unreliable", col
-            )
+            logger.warning("Column '%s' is >50%% missing — results may be unreliable", col)
 
-        # Linear interpolation for short gaps (up to 6 hours)
         df[col] = df[col].interpolate(method="time", limit=6)
-
-        # Forward/backward fill for remaining gaps
         df[col] = df[col].ffill().bfill()
 
-    # Zero-fill any remaining NaN in irradiance (nighttime sensor gaps)
+    # Nighttime irradiance gaps are genuinely zero, not missing
     if "irradiance" in df.columns:
         df["irradiance"] = df["irradiance"].fillna(0.0)
 
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. GHI estimation (Angstrom-Prescott formula)
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _estimate_ghi(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Estimate Global Horizontal Irradiance from weather variables using a
-    modified Angstrom-Prescott clearness index model.
-
-    Formula:
-      1. Start with base clearness index = 0.75
-      2. Adjust for cloud cover:    clearness × (1 - 0.75 × cloud_fraction^3.4)
-      3. Adjust for humidity:       clearness × (1 - 0.1 × rh_fraction)
-      4. Adjust for sunshine hours: clearness × (0.25 + 0.75 × sun_fraction)
-      5. GHI = clearness × solar_constant × daytime_factor
-
-    The daytime_factor uses a sinusoidal model based on hour of day to
-    approximate the sun's elevation angle without needing latitude input.
-
-    This is physics-informed estimation, not ML — it's fast, explainable,
-    and appropriate when no measured irradiance data is available.
-    """
+    # Estimate GHI using a modified Angstrom-Prescott model when no irradiance column exists.
     logger.info("Estimating GHI from weather variables (Angstrom-Prescott model)")
 
     n     = len(df)
     hours = df.index.hour
 
-    # ── Daytime solar elevation factor ───────────────────────────────────────
-    # Approximates sin(solar_elevation) using hour of day
-    # Peak at solar noon (12:00), zero at sunrise (~6:00) and sunset (~18:00)
-    daytime_mask   = (hours >= 6) & (hours <= 18)
-    solar_angle    = np.where(
+    # Sinusoidal solar elevation — peaks at noon, zero at 6am and 6pm
+    daytime_mask = (hours >= 6) & (hours <= 18)
+    solar_angle  = np.where(
         daytime_mask,
-        np.sin(np.pi * (hours - 6) / 12),   # 0 at 6am, 1 at noon, 0 at 6pm
+        np.sin(np.pi * (hours - 6) / 12),
         0.0,
     )
 
-    # ── Base clearness index ──────────────────────────────────────────────────
     clearness = np.full(n, 0.75)
 
-    # ── Cloud cover adjustment ────────────────────────────────────────────────
     if "cloud_cover" in df.columns:
-        cloud_fraction = df["cloud_cover"].values / 100.0
-        cloud_fraction = np.clip(cloud_fraction, 0.0, 1.0)
+        cloud_fraction = np.clip(df["cloud_cover"].values / 100.0, 0.0, 1.0)
         clearness     *= (1.0 - 0.75 * cloud_fraction ** 3.4)
         logger.info("Cloud cover adjustment applied")
 
-    # ── Humidity adjustment ───────────────────────────────────────────────────
     if "humidity" in df.columns:
-        rh_fraction = df["humidity"].values / 100.0
-        rh_fraction = np.clip(rh_fraction, 0.0, 1.0)
+        rh_fraction = np.clip(df["humidity"].values / 100.0, 0.0, 1.0)
         clearness  *= (1.0 - 0.1 * rh_fraction)
         logger.info("Humidity adjustment applied")
 
-    # ── Sunshine hours adjustment ─────────────────────────────────────────────
     if "sunshine_hours" in df.columns:
-        # Normalise to fraction of maximum possible daylight (12 hours)
+        # Normalise against 12 hours of max possible daylight
         sun_fraction = np.clip(df["sunshine_hours"].values / 12.0, 0.0, 1.0)
         clearness   *= (0.25 + 0.75 * sun_fraction)
         logger.info("Sunshine hours adjustment applied")
 
-    # ── Final GHI calculation ─────────────────────────────────────────────────
-    ghi = clearness * SOLAR_CONSTANT * solar_angle
-    ghi = np.clip(ghi, IRRADIANCE_MIN, IRRADIANCE_MAX)
-
+    ghi = np.clip(clearness * SOLAR_CONSTANT * solar_angle, IRRADIANCE_MIN, IRRADIANCE_MAX)
     df["irradiance"] = ghi
 
     estimated_mean = ghi[daytime_mask].mean() if daytime_mask.any() else 0
-    logger.info(
-        "GHI estimated: mean daytime value = %.1f W/m²", estimated_mean
-    )
+    logger.info("GHI estimated: mean daytime value = %.1f W/m²", estimated_mean)
 
     return df
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Public interface — called by the upload router
-# ─────────────────────────────────────────────────────────────────────────────
 
 def preprocess(
     file_bytes:     bytes,
@@ -480,32 +343,26 @@ def preprocess(
     detection_mode: str,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
-    Full preprocessing pipeline.
+    Full preprocessing pipeline — parse, clean, and return a model-ready DataFrame.
 
     Args:
-        file_bytes:     Raw bytes from the uploaded CSV file
+        file_bytes:     Raw bytes from the uploaded CSV
         detected_cols:  Column mapping from ai_detector.detect_columns()
-                        e.g. {"irradiance": "GHI", "temperature": "Temp_C", ...}
-        detection_mode: "direct" | "estimated"
+        detection_mode: "direct" (irradiance present) or "estimated" (derive from weather)
 
     Returns:
-        Tuple of:
-          - df:   Clean DataFrame with DatetimeIndex and standardised columns
-          - meta: Dict with processing statistics for the API response
-                  {rows_raw, rows_clean, pct_clean, columns_available,
-                   irradiance_mean, irradiance_max, date_range_days}
+        (df, meta) — cleaned DataFrame with DatetimeIndex, plus processing stats
 
     Raises:
-        ValueError for unrecoverable data issues (empty file, bad timestamps)
+        ValueError if the data is unrecoverable (empty, bad timestamps, etc.)
     """
-
     logger.info("Preprocessing pipeline started (mode=%s)", detection_mode)
 
-    # ── Step 1: Parse CSV ────────────────────────────────────────────────────
+    # Step 1: parse the raw CSV bytes
     df = parse_csv(file_bytes)
     rows_raw = len(df)
 
-    # ── Step 2: NSRDB timestamp — BEFORE standardise_columns drops the cols ──
+    # Step 2: build NSRDB timestamp before standardise_columns drops the date columns
     col_lower_map = {c.strip().lower(): c for c in df.columns}
     if all(k in col_lower_map for k in ["year", "month", "day", "hour"]):
         logger.info("NSRDB date columns detected — building timestamp before standardising")
@@ -522,7 +379,7 @@ def preprocess(
 
             df["timestamp"] = pd.to_datetime(build, errors="coerce")
 
-            drop_cols = [col_lower_map[k] for k in ["year","month","day","hour"] if k in col_lower_map]
+            drop_cols = [col_lower_map[k] for k in ["year", "month", "day", "hour"] if k in col_lower_map]
             if minute_col:
                 drop_cols.append(minute_col)
             df = df.drop(columns=drop_cols, errors="ignore")
@@ -532,30 +389,30 @@ def preprocess(
         except Exception as exc:
             logger.warning("NSRDB timestamp build failed: %s", exc)
 
-    # ── Step 3: Standardise column names ────────────────────────────────────
+    # Step 3: rename columns to standard names
     df = standardise_columns(df, detected_cols)
 
-    # ── Step 4: Parse timestamps ─────────────────────────────────────────────
+    # Step 4: parse timestamps into a DatetimeIndex
     df = parse_timestamps(df)
 
-    # ── Step 5: Drop NaT index rows before any further processing ────────────
+    # Step 5: drop any rows where the timestamp couldn't be parsed
     nat_count = df.index.isna().sum()
     if nat_count > 0:
         logger.warning("Dropping %d rows with NaT timestamps", nat_count)
         df = df[df.index.notna()]
 
-    # ── Step 6: Coerce to numeric + clip to physical bounds ──────────────────
+    # Step 6: coerce to float and remove physically impossible values
     df = _coerce_numeric(df)
     df = _clip_to_bounds(df)
 
-    # ── Step 7: Estimate GHI if no irradiance column ─────────────────────────
+    # Step 7: estimate GHI from weather variables if no irradiance column was found
     if detection_mode == "estimated" and "irradiance" not in df.columns:
         df = _estimate_ghi(df)
 
-    # ── Step 8: Fill missing values ──────────────────────────────────────────
+    # Step 8: fill remaining gaps
     df = _fill_missing(df)
 
-    # ── Step 9: Final validation ─────────────────────────────────────────────
+    # Step 9: make sure we ended up with something usable
     if "irradiance" not in df.columns:
         raise ValueError(
             "No irradiance column available after preprocessing. "
@@ -571,7 +428,7 @@ def preprocess(
 
     rows_clean = len(df)
 
-    # ── Step 10: Build metadata summary ──────────────────────────────────────
+    # Step 10: build a summary for the API response
     date_range_days = (df.index[-1] - df.index[0]).days + 1
     irr             = df["irradiance"]
 

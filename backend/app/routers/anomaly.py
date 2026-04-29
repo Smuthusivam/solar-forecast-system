@@ -1,6 +1,4 @@
-"""
-anomaly.py — GET /api/anomaly
-"""
+# GET /api/anomaly — run anomaly detection on a previously uploaded dataset.
 
 from __future__ import annotations
 
@@ -18,12 +16,7 @@ router = APIRouter()
 
 @router.get("/anomaly", response_model=AnomalyResponse)
 def get_anomalies(session_id: str):
-    """
-    Run anomaly detection on a previously uploaded dataset.
-
-    Uses Z-score + IQR + rolling window methods in parallel.
-    Results are merged and deduplicated before returning.
-    """
+    # Run Z-score + IQR + rolling window detection, merge results, and return them.
     session = get_session(session_id)
     df      = session["df"]
 

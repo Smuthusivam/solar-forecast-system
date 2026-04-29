@@ -1,7 +1,4 @@
-"""
-forecast.py — POST /api/forecast/run
-             GET  /api/forecast/models
-"""
+# POST /api/forecast/run and GET /api/forecast/models.
 
 from __future__ import annotations
 
@@ -29,17 +26,8 @@ router = APIRouter()
 
 @router.post("/forecast/run", response_model=ForecastResponse)
 def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
-    """
-    Run the full ML pipeline on a previously uploaded dataset.
-
-    Steps:
-      1. Load session (DataFrame + metadata)
-      2. Run XGBoost + LightGBM + Prophet + ensemble
-      3. Save run metadata to SQLite
-      4. Return full forecast response
-    """
-    # ── Load session ──────────────────────────────────────────────────────────
-    session = get_session(request.session_id)
+    # Load session, run the full ML pipeline, save metadata to DB, return results.
+    session        = get_session(request.session_id)
     df             = session["df"]
     col_map        = session["detected_cols"]
     detection_mode = session["detection_mode"]
@@ -50,7 +38,6 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
         request.session_id, request.horizon, len(df),
     )
 
-    # ── Run pipeline ──────────────────────────────────────────────────────────
     try:
         result = run_pipeline(
             df             = df,
@@ -70,7 +57,6 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
             },
         )
 
-    # ── Save to database ──────────────────────────────────────────────────────
     em = result["ensemble_metrics"]
     try:
         db_run = save_forecast_run(
@@ -83,15 +69,14 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
             ensemble_mae   = em["mae"],
             ensemble_r2    = em["r2"],
             rows_processed = result["rows_processed"],
-            anomaly_count  = 0,   # updated later by anomaly router
+            anomaly_count  = 0,  # updated later by the anomaly router
         )
         run_id = db_run.run_id
         logger.info("Forecast run saved to DB: run_id=%d", run_id)
     except Exception as exc:
         logger.error("DB save failed (non-fatal): %s", exc)
-        run_id = -1   # don't crash the whole response over a DB write failure
+        run_id = -1  # don't crash the response over a DB write failure
 
-    # ── Build response ────────────────────────────────────────────────────────
     forecast_points = [ForecastPoint(**p) for p in result["forecast"]]
 
     per_model = [
@@ -106,14 +91,14 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
     ]
 
     return ForecastResponse(
-        session_id        = request.session_id,
-        run_id            = run_id,
-        horizon           = int(request.horizon),
-        detection_mode    = DetectionMode(detection_mode),
-        forecast          = forecast_points,
-        ensemble_metrics  = ModelMetrics(**em),
-        per_model         = per_model,
-        feature_importance= result.get("feature_importance"),
+        session_id         = request.session_id,
+        run_id             = run_id,
+        horizon            = int(request.horizon),
+        detection_mode     = DetectionMode(detection_mode),
+        forecast           = forecast_points,
+        ensemble_metrics   = ModelMetrics(**em),
+        per_model          = per_model,
+        feature_importance = result.get("feature_importance"),
     )
 
 

@@ -1,25 +1,4 @@
-"""
-ai_detector.py — AI-powered column detection using the Anthropic Claude API.
-
-Problem this solves:
-  Users upload CSVs from different sources — weather stations, Kaggle datasets,
-  government portals — each with different column names, languages, and formats.
-  Examples of the same physical variable across real datasets:
-    Irradiance : "GHI", "ghi_wm2", "Solar Radiation", "Solare Strahlung",
-                 "irradiance_wpm2", "SOLARAD", "солнечная радиация"
-    Temperature: "temp", "Temp_C", "air_temperature", "TAMB", "tmp", "Température"
-
-  Claude reads the column names + sample rows and returns a clean JSON mapping
-  regardless of naming convention or language.
-
-Fallback strategy:
-  If the Claude API is unavailable (network error, quota exceeded, invalid key),
-  the service falls back to alias-based detection using a hardcoded dictionary
-  of known column name variants. This keeps the system functional offline.
-
-Environment variables:
-  ANTHROPIC_API_KEY   Required for Claude API calls. Set in backend/.env
-"""
+# AI-powered column detection using Claude API, with alias-based fallback when offline.
 
 from __future__ import annotations
 
@@ -36,33 +15,25 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
-
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 CLAUDE_MODEL      = "claude-sonnet-4-6"
 MAX_TOKENS        = 500
-REQUEST_TIMEOUT   = 30   # seconds — Claude API is fast, 30s is generous
+REQUEST_TIMEOUT   = 30
 
-# Confidence thresholds
 HIGH_CONFIDENCE   = 0.90
 MEDIUM_CONFIDENCE = 0.70
 LOW_CONFIDENCE    = 0.50
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Alias dictionary — fallback when Claude API is unavailable
-# ─────────────────────────────────────────────────────────────────────────────
-
+# Known column name variants for each physical variable — used when Claude API is unavailable.
 COLUMN_ALIASES: dict[str, list[str]] = {
-   "irradiance": [
+    "irradiance": [
         "ghi", "ghi_wm2", "global_horizontal_irradiance", "solar_radiation",
         "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
         "radiation", "rad", "shortwave_radiation", "sw_radiation",
         "global_radiation", "globalrad", "sr", "rs",
         "dc_power", "ac_power", "power", "power_output", "solar_power",
         "active_power", "generated_power",
-        ],
+    ],
     "temperature": [
         "temp", "temperature", "air_temperature", "tamb", "tmp",
         "temp_c", "temp_f", "ambient_temp", "t_air", "ta", "t2m",
@@ -93,10 +64,6 @@ COLUMN_ALIASES: dict[str, list[str]] = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Claude API caller
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _build_prompt(columns: list[str], sample_rows: list[dict]) -> str:
     col_list   = ", ".join(columns)
     sample_str = json.dumps(sample_rows[:3], indent=2, default=str)
@@ -111,7 +78,7 @@ Sample data (first 3 rows):
 
 CRITICAL: Never return unit strings like "w/m2", "%", "c", "m/s" as column names.
 These are unit labels, not column names. Always return the actual column header.
-For NSRDB: map GHI → irradiance, Temperature → temperature, 
+For NSRDB: map GHI → irradiance, Temperature → temperature,
 Relative Humidity → humidity, Wind Speed → wind_speed.
 timestamp should be null if date is split into Year/Month/Day/Hour columns.
 Your task: identify which column corresponds to each physical variable.
@@ -144,11 +111,7 @@ Rules:
 
 
 def _call_claude_api(prompt: str) -> dict[str, Any]:
-    """
-    Call the Anthropic Messages API and return the parsed JSON response.
-    Raises ValueError if the response cannot be parsed as valid JSON.
-    Raises httpx.HTTPError on network / API errors.
-    """
+    # Call the Anthropic Messages API and return the parsed JSON response.
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY is not set in environment variables")
@@ -176,7 +139,7 @@ def _call_claude_api(prompt: str) -> dict[str, Any]:
 
     logger.info("Claude API response received (%d chars)", len(raw_content))
 
-    # Strip markdown code fences if Claude wraps the JSON anyway
+    # Strip markdown fences if Claude wraps the JSON anyway
     raw_content = re.sub(r"^```(?:json)?\s*", "", raw_content)
     raw_content = re.sub(r"\s*```$",          "", raw_content)
 
@@ -187,18 +150,8 @@ def _call_claude_api(prompt: str) -> dict[str, Any]:
         raise ValueError(f"Claude API returned invalid JSON: {exc}") from exc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Alias-based fallback detector
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _alias_fallback(columns: list[str]) -> dict[str, Any]:
-    """
-    Detect columns using the hardcoded alias dictionary.
-    Used when the Claude API is unavailable.
-
-    Matching is case-insensitive and ignores common separators
-    ( - _ space ) so "GHI_Wm2" matches "ghi_wm2".
-    """
+    # Match columns against the alias dictionary; confidence scales with how many matched.
     def normalise(name: str) -> str:
         return re.sub(r"[\s\-_]+", "_", name.strip().lower())
 
@@ -214,8 +167,7 @@ def _alias_fallback(columns: list[str]) -> dict[str, Any]:
                 matched += 1
                 break
 
-    total     = len(COLUMN_ALIASES)
-    # Confidence scales with how many variables were found
+    total      = len(COLUMN_ALIASES)
     confidence = round(matched / total, 2)
 
     result["confidence"] = confidence
@@ -225,35 +177,19 @@ def _alias_fallback(columns: list[str]) -> dict[str, Any]:
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Result builder
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _build_result(
-    mapping: dict[str, Any],
-    columns: list[str],
+    mapping:       dict[str, Any],
+    columns:       list[str],
     used_fallback: bool,
 ) -> dict[str, Any]:
-    """
-    Validate the raw mapping (from Claude or fallback) and build the
-    final result dict consumed by the upload router.
-
-    Returns:
-    {
-        "detected":       DetectedColumns-compatible dict,
-        "detection_mode": "direct" | "estimated",
-        "confidence":     float,
-        "warnings":       list[str],
-        "used_fallback":  bool,
-    }
-    """
+    # Validate the raw mapping and build the final result dict for the upload router.
     warnings = []
     if used_fallback:
         warnings.append("Claude API unavailable — used alias-based detection as fallback")
 
     valid_columns = set(columns)
 
-    # Unit strings that Claude sometimes returns by mistake
+    # Unit strings that Claude sometimes returns by mistake instead of real column names
     UNIT_STRINGS = {
         "w/m2", "w/m²", "kwh/m2", "%", "c", "°c", "k",
         "m/s", "km/h", "mph", "degree", "degrees", "mbar",
@@ -265,7 +201,6 @@ def _build_result(
                   "wind_speed", "cloud_cover", "sunshine_hours", "timestamp"]:
         raw_value = mapping.get(field)
 
-        # Reject unit strings even if they match a column
         if raw_value and str(raw_value).lower().strip() in UNIT_STRINGS:
             warnings.append(
                 f"Claude returned a unit string '{raw_value}' for '{field}' — ignored"
@@ -281,10 +216,7 @@ def _build_result(
                 )
             detected[field] = None
 
-
-    # Determine detection mode
-    # "direct"    → irradiance column found, use it as-is
-    # "estimated" → no irradiance column, GHI will be computed from weather vars
+    # "direct" if irradiance column found; "estimated" if GHI must be derived from weather
     if detected["irradiance"]:
         detection_mode = "direct"
     else:
@@ -294,7 +226,6 @@ def _build_result(
             "from weather variables using the Angstrom-Prescott formula"
         )
 
-        # Warn if we also lack the minimum weather variables for estimation
         has_weather = any(
             detected.get(v) for v in ["temperature", "humidity", "cloud_cover"]
         )
@@ -326,39 +257,13 @@ def _build_result(
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Public interface — called by upload router
-# ─────────────────────────────────────────────────────────────────────────────
-
 def detect_columns(
     columns:     list[str],
     sample_rows: list[dict],
 ) -> dict[str, Any]:
-    """
-    Main entry point for column detection.
-
-    Strategy:
-      1. Try Claude API first (most accurate, handles any language/format)
-      2. On any failure → fall back to alias dictionary (always works offline)
-
-    Args:
-        columns:     List of column names from the uploaded CSV header
-        sample_rows: First 3–5 rows as a list of dicts (column → value)
-
-    Returns:
-        {
-            "detected":       dict mapping variable → column name (or None),
-            "detection_mode": "direct" | "estimated",
-            "confidence":     float 0.0–1.0,
-            "warnings":       list of warning strings,
-            "used_fallback":  bool,
-        }
-
-    Never raises — always returns a result (fallback if necessary).
-    """
+    # Try Claude API first; fall back to alias matching on any failure.
     used_fallback = False
 
-    # ── Try Claude API ────────────────────────────────────────────────────────
     try:
         prompt  = _build_prompt(columns, sample_rows)
         mapping = _call_claude_api(prompt)
@@ -369,5 +274,4 @@ def detect_columns(
         mapping       = _alias_fallback(columns)
         used_fallback = True
 
-    # ── Build and return validated result ─────────────────────────────────────
     return _build_result(mapping, columns, used_fallback)

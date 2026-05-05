@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import db_is_online, init_db
-from app.routers import anomaly, export, forecast, history, upload
+from app.routers import anomaly, export, forecast, history, upload, correction
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,6 +112,7 @@ app.include_router(upload.router,   prefix="/api", tags=["Upload"])
 app.include_router(forecast.router, prefix="/api", tags=["Forecast"])
 app.include_router(anomaly.router,  prefix="/api", tags=["Anomaly"])
 app.include_router(history.router,  prefix="/api", tags=["History"])
+app.include_router(correction.router, prefix="/api", tags=["Correction"])   
 app.include_router(export.router,   prefix="/api", tags=["Export"])
 
 

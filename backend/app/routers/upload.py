@@ -176,6 +176,13 @@ async def upload_csv(file: UploadFile = File(...)):
         "expires_at":     datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS),
     }
 
+    try:
+        from app.routers.correction import register_upload_session
+
+        register_upload_session(session_id, df, detection["detected"])
+    except Exception as exc:
+        logger.warning("Failed to register correction session for %s: %s", session_id, exc)
+
     logger.info(
         "Session created: %s | rows=%d | mode=%s",
         session_id, len(df), detection["detection_mode"],

@@ -1,413 +1,505 @@
+// AnomalyReport.jsx — Full anomaly detection + AI correction + model comparison page
+
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ScatterChart, Scatter,
-  BarChart, Bar, Cell
+  Legend, ResponsiveContainer, ReferenceLine, BarChart, Bar,
 } from "recharts";
-import { getAnomalies } from "../services/api";
+import { getAnomalies, runCorrection, getCorrectedCSVUrl } from "../services/api";
 
-const SEVERITY_COLORS = {
-  high:   "#ef4444",
-  medium: "#f59e0b",
-  low:    "#3b82f6",
-};
-
-const METHOD_COLORS = {
-  zscore:  "#8b5cf6",
-  iqr:     "#10b981",
-  rolling: "#f59e0b",
-};
-
-function Badge({ text, color }) {
+// ── Severity badge ──────────────────────────────────────────────────────────
+const SeverityBadge = ({ severity }) => {
+  const colors = {
+    high: "bg-red-100 text-red-700 border border-red-300",
+    medium: "bg-yellow-100 text-yellow-700 border border-yellow-300",
+    low: "bg-blue-100 text-blue-700 border border-blue-300",
+  };
   return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-      style={{ backgroundColor: color + "20", color }}>
-      {text}
+    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors[severity] || colors.low}`}>
+      {severity}
     </span>
   );
-}
+};
 
-function StatCard({ label, value, sub, color }) {
+// ── Confidence badge ────────────────────────────────────────────────────────
+const ConfidenceBadge = ({ confidence }) => {
+  const colors = {
+    high: "bg-green-100 text-green-700",
+    medium: "bg-yellow-100 text-yellow-700",
+    low: "bg-red-100 text-red-700",
+  };
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[confidence] || ""}`}>
+      {confidence} confidence
+    </span>
+  );
+};
+
+// ── Source badge ────────────────────────────────────────────────────────────
+const SourceBadge = ({ source }) => {
+  const map = {
+    ai: { label: "🤖 AI", cls: "bg-purple-100 text-purple-700" },
+    physics_rule: { label: "⚡ Physics", cls: "bg-cyan-100 text-cyan-700" },
+    interpolation_fallback: { label: "📐 Interpolation", cls: "bg-gray-100 text-gray-600" },
+  };
+  const { label, cls } = map[source] || { label: source, cls: "bg-gray-100 text-gray-600" };
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
+};
+
+// ── Metric delta card ────────────────────────────────────────────────────────
+const MetricDeltaCard = ({ label, data }) => {
+  if (!data) return null;
+  const improved = data.delta < 0; // lower RMSE/MAE = better
+  const r2Metric = label === "R²";
+  const isImproved = r2Metric ? data.delta > 0 : data.delta < 0;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-1">
+      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</div>
+      <div className="flex items-end gap-2">
+        <span className="text-2xl font-bold text-gray-800">
+          {data.corrected.toFixed(4)}
+        </span>
+        <span className="text-sm text-gray-400 mb-0.5 line-through">{data.original.toFixed(4)}</span>
+      </div>
+      <div className={`text-sm font-semibold ${isImproved ? "text-green-600" : "text-red-500"}`}>
+        {isImproved ? "▼" : "▲"} {Math.abs(data.improvement_pct).toFixed(2)}% {isImproved ? "improvement" : "degraded"}
+      </div>
     </div>
   );
-}
+};
 
-function AnomalyReport() {
+// ── Main component ──────────────────────────────────────────────────────────
+export default function AnomalyReport({ datasetId }) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { forecast, result } = location.state || {};
+  const routeSessionId = location.state?.result?.session_id || new URLSearchParams(location.search).get("session_id");
+  const sessionId = datasetId || routeSessionId;
 
-  const [anomalyData, setAnomalyData]   = useState(null);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
-  const [severityFilter, setSeverity]   = useState("all");
-  const [methodFilter, setMethod]       = useState("all");
+  const [anomalies, setAnomalies] = useState([]);
+  const [loadingAnomalies, setLoadingAnomalies] = useState(true);
+  const [errorAnomalies, setErrorAnomalies] = useState(null);
 
-  const sessionId = result?.session_id;
+  const [correctionResult, setCorrectionResult] = useState(null);
+  const [loadingCorrection, setLoadingCorrection] = useState(false);
+  const [correctionError, setCorrectionError] = useState(null);
 
-  // ── Fetch anomalies on mount ──────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState("detection"); // "detection" | "correction" | "comparison"
+
+  // Load anomalies on mount
   useEffect(() => {
     if (!sessionId) {
-      setError("No session found. Please upload a file first.");
-      setLoading(false);
+      setLoadingAnomalies(false);
+      setErrorAnomalies("No session found. Run a forecast first, then open Anomalies from the results page.");
       return;
     }
 
+    setLoadingAnomalies(true);
     getAnomalies(sessionId)
-      .then(data => {
-        setAnomalyData(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError("Failed to load anomalies. " + (err?.message || ""));
-        setLoading(false);
-      });
+      .then((res) => setAnomalies(res.anomalies || []))
+      .catch((e) => setErrorAnomalies(e.message))
+      .finally(() => setLoadingAnomalies(false));
   }, [sessionId]);
 
-  // ── Loading state ─────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-500">Running anomaly detection...</p>
-          <p className="text-xs text-gray-400 mt-2">Z-score + IQR + Rolling window</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Error state ───────────────────────────────────────────────────────────
-  if (error || !anomalyData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
-        <p className="text-red-500">{error || "No data found."}</p>
-        <button onClick={() => navigate("/")}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg">
-          Go Back to Upload
-        </button>
-      </div>
-    );
-  }
-
-  const { anomalies, total_points, anomaly_count, anomaly_rate } = anomalyData;
-
-  // ── Filter anomalies ──────────────────────────────────────────────────────
-  const filtered = anomalies.filter(a => {
-    const matchSeverity = severityFilter === "all" || a.severity === severityFilter;
-    const matchMethod   = methodFilter   === "all" || a.method   === methodFilter;
-    return matchSeverity && matchMethod;
-  });
-
-  // ── Severity breakdown ────────────────────────────────────────────────────
-  const severityCounts = {
-    high:   anomalies.filter(a => a.severity === "high").length,
-    medium: anomalies.filter(a => a.severity === "medium").length,
-    low:    anomalies.filter(a => a.severity === "low").length,
+  const handleRunCorrection = async () => {
+    setLoadingCorrection(true);
+    setCorrectionError(null);
+    try {
+      const res = await runCorrection(sessionId);
+      setCorrectionResult(res);
+      setActiveTab("correction");
+    } catch (e) {
+      setCorrectionError(e.response?.data?.detail || e.message);
+    } finally {
+      setLoadingCorrection(false);
+    }
   };
 
-  const methodCounts = {
-    zscore:  anomalies.filter(a => a.method === "zscore").length,
-    iqr:     anomalies.filter(a => a.method === "iqr").length,
-    rolling: anomalies.filter(a => a.method === "rolling").length,
-  };
-
-  // ── Timeline chart data ───────────────────────────────────────────────────
-  // Combine forecast points + anomaly markers
-  const step = Math.max(1, Math.floor((forecast?.forecast?.length || 1) / 200));
-  const timelineData = (forecast?.forecast || [])
-    .filter((_, i) => i % step === 0)
-    .map(p => {
-      const ts = p.timestamp;
-      const anomaly = anomalies.find(a => a.timestamp.substring(0, 16) === ts.substring(0, 16));
-      return {
-        time:      ts.substring(5, 16).replace("T", " "),
-        actual:    p.actual != null ? parseFloat(p.actual.toFixed(1)) : null,
-        predicted: parseFloat(p.predicted.toFixed(1)),
-        anomaly:   anomaly ? parseFloat(anomaly.value.toFixed(1)) : null,
-        severity:  anomaly?.severity || null,
-      };
-    });
-
-  // ── Severity bar chart data ───────────────────────────────────────────────
-  const severityBarData = Object.entries(severityCounts).map(([s, count]) => ({
-    severity: s.charAt(0).toUpperCase() + s.slice(1),
-    count,
-    fill: SEVERITY_COLORS[s],
+  // Build chart data for anomaly timeline
+  const timelineData = anomalies.slice(0, 60).map((a) => ({
+    time: new Date(a.timestamp).toLocaleString(),
+    value: a.value,
+    severity: a.severity,
   }));
 
-  // ── Method bar chart data ─────────────────────────────────────────────────
-  const methodBarData = Object.entries(methodCounts).map(([m, count]) => ({
-    method: m.charAt(0).toUpperCase() + m.slice(1),
-    count,
-    fill: METHOD_COLORS[m],
-  }));
+  // Build chart data for before/after forecast comparison
+  const comparisonChartData = (() => {
+    if (!correctionResult?.forecasts) return [];
+    const { original = [], corrected = [], timestamps = [], actuals = [] } = correctionResult.forecasts;
+    return timestamps.map((ts, i) => ({
+      time: new Date(ts).toLocaleString(),
+      "Original Forecast": original[i] ?? null,
+      "Corrected Forecast": corrected[i] ?? null,
+      "Actual": actuals[i] ?? null,
+    }));
+  })();
 
-  // ── Deviation scatter data ────────────────────────────────────────────────
-  const scatterData = anomalies.map(a => ({
-    expected:  parseFloat(a.expected.toFixed(1)),
-    value:     parseFloat(a.value.toFixed(1)),
-    deviation: parseFloat(a.deviation.toFixed(1)),
-    severity:  a.severity,
-    fill:      SEVERITY_COLORS[a.severity],
-  }));
+  // Build correction log chart — delta per correction
+  const correctionDeltaData = correctionResult?.correction_log?.map((c, i) => ({
+    name: `#${i + 1}`,
+    original: c.original_value,
+    corrected: c.corrected_value,
+    delta: Math.abs(c.corrected_value - c.original_value),
+  })) || [];
+
+  const tabs = [
+    { key: "detection", label: "🔍 Detection" },
+    { key: "correction", label: "🤖 AI Correction", disabled: !correctionResult },
+    { key: "comparison", label: "📊 Before vs After", disabled: !correctionResult },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Anomaly Report</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            {result?.filename} — Z-score + IQR + Rolling window detection
+          <h1 className="text-2xl font-bold text-gray-900">Anomaly Report</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            AI-powered anomaly detection and intelligent correction for dataset{" "}
+            <code className="bg-gray-100 px-1 rounded">{datasetId}</code>
           </p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => navigate("/dashboard", { state: { forecast, result } })}
-            className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
-            ← Dashboard
+
+        <div className="flex gap-3 flex-wrap">
+          {correctionResult && (
+            <a
+              href={getCorrectedCSVUrl(correctionResult.session_id)}
+              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition flex items-center gap-2"
+            >
+              ⬇ Download Corrected CSV
+            </a>
+          )}
+          <button
+            onClick={handleRunCorrection}
+            disabled={loadingCorrection || loadingAnomalies}
+            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+          >
+            {loadingCorrection ? (
+              <>
+                <span className="animate-spin">⚙</span> Running AI Correction…
+              </>
+            ) : (
+              "🤖 Run AI Correction"
+            )}
           </button>
-          <button onClick={() => navigate("/compare", { state: { forecast, result } })}
-            className="border border-blue-300 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">
-            Model Comparison →
+        </div>
+      </div>
+
+      {correctionError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          ⚠ Correction failed: {correctionError}
+        </div>
+      )}
+
+      {/* Stats bar */}
+      {correctionResult && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "Anomalies Found", value: correctionResult.anomaly_count, color: "text-orange-600" },
+            { label: "AI Corrected", value: correctionResult.stats.ai_corrections, color: "text-purple-600" },
+            { label: "Physics Rule", value: correctionResult.stats.physics_rule_corrections, color: "text-cyan-600" },
+            { label: "Interpolated", value: correctionResult.stats.interpolation_fallbacks, color: "text-gray-600" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className={`text-3xl font-bold ${color}`}>{value}</div>
+              <div className="text-xs text-gray-500 mt-1">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {tabs.map(({ key, label, disabled }) => (
+          <button
+            key={key}
+            onClick={() => !disabled && setActiveTab(key)}
+            disabled={disabled}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition
+              ${activeTab === key
+                ? "bg-white border border-b-white border-gray-200 text-purple-700 -mb-px"
+                : disabled
+                  ? "text-gray-300 cursor-not-allowed"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            {label}
           </button>
-        </div>
+        ))}
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Total Points Scanned"
-          value={total_points.toLocaleString()}
-          sub="full irradiance series"
-          color="text-gray-700"
-        />
-        <StatCard
-          label="Anomalies Detected"
-          value={anomaly_count}
-          sub={`${(anomaly_rate * 100).toFixed(2)}% of data`}
-          color={anomaly_count > 50 ? "text-red-500" : "text-orange-500"}
-        />
-        <StatCard
-          label="High Severity"
-          value={severityCounts.high}
-          sub="critical anomalies"
-          color="text-red-500"
-        />
-        <StatCard
-          label="Most Used Method"
-          value={Object.entries(methodCounts).sort((a,b) => b[1]-a[1])[0][0]}
-          sub="primary detector"
-          color="text-purple-600"
-        />
-      </div>
-
-      {/* Anomaly timeline */}
-      <div className="bg-white rounded-xl shadow p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">
-          Anomaly Timeline
-        </h2>
-        <p className="text-sm text-gray-400 mb-4">
-          Red dots = detected anomalies overlaid on the irradiance series
-        </p>
-        <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={timelineData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="time" tick={{ fontSize: 10 }}
-              interval={Math.floor(timelineData.length / 8)} />
-            <YAxis tick={{ fontSize: 11 }}
-              label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
-            <Tooltip contentStyle={{ fontSize: 11 }} />
-            <Legend />
-            <Line type="monotone" dataKey="actual" stroke="#10b981"
-              strokeWidth={1.5} dot={false} name="Actual" />
-            <Line type="monotone" dataKey="predicted" stroke="#3b82f6"
-              strokeWidth={1.5} dot={false} name="Predicted" />
-            <Line type="monotone" dataKey="anomaly" stroke="#ef4444"
-              strokeWidth={0} dot={{ fill: "#ef4444", r: 4 }} name="Anomaly" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Severity + Method charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-
-        {/* Severity breakdown */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-700 mb-1">
-            Severity Breakdown
-          </h2>
-          <p className="text-sm text-gray-400 mb-4">
-            How many anomalies fall in each severity category
-          </p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={severityBarData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="severity" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                {severityBarData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Detection method breakdown */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-700 mb-1">
-            Detection Method
-          </h2>
-          <p className="text-sm text-gray-400 mb-4">
-            Which method flagged the most anomalies
-          </p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={methodBarData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="method" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                {methodBarData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Deviation scatter */}
-      <div className="bg-white rounded-xl shadow p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">
-          Expected vs Observed (Anomalies Only)
-        </h2>
-        <p className="text-sm text-gray-400 mb-4">
-          Points far from the diagonal line = large deviations.
-          Color = severity (red=high, orange=medium, blue=low)
-        </p>
-        <ResponsiveContainer width="100%" height={300}>
-          <ScatterChart margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="expected" name="Expected"
-              label={{ value: "Expected W/m²", position: "insideBottom", offset: -5 }}
-              tick={{ fontSize: 11 }} />
-            <YAxis dataKey="value" name="Observed"
-              label={{ value: "Observed W/m²", angle: -90, position: "insideLeft" }}
-              tick={{ fontSize: 11 }} />
-            <Tooltip cursor={{ strokeDasharray: "3 3" }}
-              content={({ payload }) => {
-                if (!payload?.length) return null;
-                const d = payload[0].payload;
-                return (
-                  <div className="bg-white border border-gray-200 rounded p-2 text-xs shadow">
-                    <p>Expected: {d.expected} W/m²</p>
-                    <p>Observed: {d.value} W/m²</p>
-                    <p>Deviation: {d.deviation} W/m²</p>
-                    <p>Severity: {d.severity}</p>
+      {/* ── Tab: Detection ──────────────────────────────────────────────────── */}
+      {activeTab === "detection" && (
+        <div className="space-y-6">
+          {loadingAnomalies ? (
+            <div className="flex items-center justify-center h-40 text-gray-400">Loading anomalies…</div>
+          ) : errorAnomalies ? (
+            <div className="text-red-500 text-sm">Error: {errorAnomalies}</div>
+          ) : anomalies.length === 0 ? (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-6 rounded-xl text-center">
+              ✅ No anomalies detected in this dataset!
+            </div>
+          ) : (
+            <>
+              {/* Summary chips */}
+              <div className="flex gap-3 flex-wrap">
+                {["high", "medium", "low"].map((s) => (
+                  <div key={s} className="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-sm">
+                    <SeverityBadge severity={s} />{" "}
+                    <span className="ml-1 font-semibold">{anomalies.filter((a) => a.severity === s).length}</span>
                   </div>
-                );
-              }}
-            />
-            <Scatter data={scatterData} fill="#ef4444">
-              {scatterData.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} fillOpacity={0.7} />
-              ))}
-            </Scatter>
-          </ScatterChart>
-        </ResponsiveContainer>
-      </div>
+                ))}
+              </div>
 
-      {/* Anomaly table */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-700">
-              Anomaly Records
-            </h2>
-            <p className="text-sm text-gray-400">
-              Showing {filtered.length} of {anomaly_count} anomalies
-            </p>
-          </div>
+              {/* Timeline chart */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="font-semibold text-gray-800 mb-4">Anomaly Timeline</h3>
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={timelineData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      formatter={(v) => [`${v} W/m²`, "Value"]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#f97316"
+                      strokeWidth={2}
+                      dot={{ r: 4, fill: "#f97316" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
 
-          {/* Filters */}
-          <div className="flex gap-3">
-            <select
-              value={severityFilter}
-              onChange={e => setSeverity(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-            >
-              <option value="all">All Severities</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-            <select
-              value={methodFilter}
-              onChange={e => setMethod(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-            >
-              <option value="all">All Methods</option>
-              <option value="zscore">Z-score</option>
-              <option value="iqr">IQR</option>
-              <option value="rolling">Rolling</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b">
-                <th className="text-left p-3 text-gray-500">#</th>
-                <th className="text-left p-3 text-gray-500">Timestamp</th>
-                <th className="text-right p-3 text-gray-500">Observed (W/m²)</th>
-                <th className="text-right p-3 text-gray-500">Expected (W/m²)</th>
-                <th className="text-right p-3 text-gray-500">Deviation</th>
-                <th className="text-center p-3 text-gray-500">Severity</th>
-                <th className="text-center p-3 text-gray-500">Method</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0, 50).map((a, i) => (
-                <tr key={i} className="border-b hover:bg-gray-50">
-                  <td className="p-3 text-gray-400">{i + 1}</td>
-                  <td className="p-3 font-mono text-xs text-gray-600">
-                    {a.timestamp.substring(0, 16).replace("T", " ")}
-                  </td>
-                  <td className="p-3 text-right">{a.value.toFixed(1)}</td>
-                  <td className="p-3 text-right text-gray-400">{a.expected.toFixed(1)}</td>
-                  <td className="p-3 text-right font-medium text-red-500">
-                    {a.deviation.toFixed(1)}
-                  </td>
-                  <td className="p-3 text-center">
-                    <Badge text={a.severity} color={SEVERITY_COLORS[a.severity]} />
-                  </td>
-                  <td className="p-3 text-center">
-                    <Badge text={a.method} color={METHOD_COLORS[a.method]} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filtered.length > 50 && (
-            <p className="text-center text-xs text-gray-400 mt-3">
-              Showing first 50 of {filtered.length} records
-            </p>
+              {/* Anomaly table */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <h3 className="font-semibold text-gray-800">Detected Anomalies ({anomalies.length})</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                      <tr>
+                        {["Timestamp", "Value (W/m²)", "Method", "Severity"].map((h) => (
+                          <th key={h} className="px-4 py-2 text-left">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {anomalies.map((a, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-mono text-xs">{new Date(a.timestamp).toLocaleString()}</td>
+                          <td className="px-4 py-2 font-semibold text-orange-600">{a.value.toFixed(2)}</td>
+                          <td className="px-4 py-2">
+                            <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">{a.method}</span>
+                          </td>
+                          <td className="px-4 py-2"><SeverityBadge severity={a.severity} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
-      </div>
+      )}
 
+      {/* ── Tab: AI Correction ──────────────────────────────────────────────── */}
+      {activeTab === "correction" && correctionResult && (
+        <div className="space-y-6">
+
+          {/* Avg delta chart */}
+          {correctionDeltaData.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-800 mb-4">
+                Correction Magnitude — Original vs Corrected Values
+              </h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={correctionDeltaData} barCategoryGap="30%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                  <Tooltip formatter={(v) => [`${v.toFixed(2)} W/m²`]} />
+                  <Legend />
+                  <Bar dataKey="original" name="Original" fill="#f97316" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="corrected" name="Corrected" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Correction log table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">
+                AI Correction Log ({correctionResult.correction_log.length} corrections)
+              </h3>
+              <div className="text-xs text-gray-400">
+                Avg delta: {correctionResult.stats.avg_correction_delta?.toFixed(2)} W/m²
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    {["Timestamp", "Original", "Corrected", "Δ", "Source", "Confidence", "Reasoning"].map((h) => (
+                      <th key={h} className="px-4 py-2 text-left whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {correctionResult.correction_log.map((c, i) => {
+                    const delta = c.corrected_value - c.original_value;
+                    return (
+                      <tr key={i} className="hover:bg-gray-50 align-top">
+                        <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
+                          {new Date(c.timestamp).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2 font-semibold text-orange-600">
+                          {c.original_value.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2 font-semibold text-purple-600">
+                          {c.corrected_value.toFixed(2)}
+                        </td>
+                        <td className={`px-4 py-2 font-semibold text-xs ${delta < 0 ? "text-green-600" : "text-red-500"}`}>
+                          {delta > 0 ? "+" : ""}{delta.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2">
+                          <SourceBadge source={c.correction_source} />
+                        </td>
+                        <td className="px-4 py-2">
+                          <ConfidenceBadge confidence={c.confidence} />
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-600 max-w-xs">
+                          {c.reasoning}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab: Before vs After Comparison ────────────────────────────────── */}
+      {activeTab === "comparison" && correctionResult && (
+        <div className="space-y-6">
+
+          {/* Metric cards */}
+          {correctionResult.metrics_comparison && Object.keys(correctionResult.metrics_comparison).length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {Object.entries(correctionResult.metrics_comparison).map(([key, data]) => (
+                <MetricDeltaCard key={key} label={key.toUpperCase()} data={data} />
+              ))}
+            </div>
+          )}
+
+          {/* Forecast comparison chart */}
+          {comparisonChartData.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-800 mb-1">
+                Forecast: Original Data vs AI-Corrected Data
+              </h3>
+              <p className="text-xs text-gray-400 mb-4">
+                Compare how ML predictions change after anomaly correction
+              </p>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={comparisonChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    formatter={(v) => [`${v?.toFixed(2)} W/m²`]}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="Actual"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Original Forecast"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    dot={false}
+                    strokeDasharray="5 3"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Corrected Forecast"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Per-model comparison table */}
+          {correctionResult.model_comparison?.original && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-800">Per-Model Metrics: Before vs After Correction</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Model</th>
+                      {["RMSE", "MAE", "R²", "MAPE"].map((m) => (
+                        <>
+                          <th key={`${m}-orig`} className="px-3 py-2 text-center text-orange-500">{m} (Orig)</th>
+                          <th key={`${m}-corr`} className="px-3 py-2 text-center text-purple-500">{m} (Corr)</th>
+                        </>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {Object.keys(correctionResult.model_comparison.original).map((model) => {
+                      const orig = correctionResult.model_comparison.original[model];
+                      const corr = correctionResult.model_comparison.corrected?.[model] || {};
+                      return (
+                        <tr key={model} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-semibold capitalize">{model}</td>
+                          {["rmse", "mae", "r2", "mape"].map((metric) => (
+                            <>
+                              <td key={`${model}-${metric}-orig`} className="px-3 py-2 text-center text-orange-600">
+                                {orig[metric]?.toFixed(4) ?? "—"}
+                              </td>
+                              <td
+                                key={`${model}-${metric}-corr`}
+                                className={`px-3 py-2 text-center font-semibold ${
+                                  metric === "r2"
+                                    ? (corr[metric] > orig[metric] ? "text-green-600" : "text-red-500")
+                                    : (corr[metric] < orig[metric] ? "text-green-600" : "text-red-500")
+                                }`}
+                              >
+                                {corr[metric]?.toFixed(4) ?? "—"}
+                              </td>
+                            </>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
-
-export default AnomalyReport;

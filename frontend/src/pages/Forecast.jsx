@@ -439,7 +439,7 @@ export default function Forecast() {
                 <h3 className="font-semibold text-gray-900">Hourly Forecast ({futurePoints.length} hours)</h3>
                 <p className="text-xs text-gray-400 mt-0.5">Full hour-by-hour predicted irradiance</p>
               </div>
-              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <div className="overflow-x-auto max-h-150 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0">
                     <tr>

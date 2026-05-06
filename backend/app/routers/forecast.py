@@ -1,4 +1,4 @@
-# POST /api/forecast/run and GET /api/forecast/models.
+# POST /api/forecast/run.
 
 from __future__ import annotations
 
@@ -104,30 +104,3 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/forecast/models")
-def list_models():
-    """Return available models and their descriptions."""
-    return {
-        "models": [
-            {
-                "name":        "XGBoost",
-                "type":        "Gradient Boosted Trees",
-                "description": "Fast, accurate tree ensemble. Uses full feature matrix.",
-            },
-            {
-                "name":        "LightGBM",
-                "type":        "Leaf-wise Gradient Boosting",
-                "description": "Microsoft's faster XGBoost alternative. Same feature matrix.",
-            },
-            {
-                "name":        "Prophet",
-                "type":        "Additive Seasonal Decomposition",
-                "description": "Meta's time series model. Handles daily + annual seasonality.",
-            },
-            {
-                "name":        "Ensemble",
-                "type":        "Weighted Average",
-                "description": "RMSE-weighted combination of all three models.",
-            },
-        ]
-    }

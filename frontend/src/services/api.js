@@ -42,12 +42,6 @@ export function writeAnomalyReportCache(sessionId, patch) {
   return nextValue;
 }
 
-export function clearAnomalyReportCache(sessionId) {
-  if (typeof window === "undefined" || !sessionId) return;
-
-  window.localStorage.removeItem(getAnomalyReportCacheKey(sessionId));
-}
-
 // ─────────────────────────────────────────
 // 1. UPLOAD CSV
 // ─────────────────────────────────────────
@@ -74,15 +68,7 @@ export async function runForecast(sessionId, horizonHours = 24, trainSize = 80) 
 }
 
 // ─────────────────────────────────────────
-// 3. GET AVAILABLE MODELS + METRICS
-// ─────────────────────────────────────────
-export async function getModels() {
-  const response = await API.get("/api/forecast/models");
-  return response.data;
-}
-
-// ─────────────────────────────────────────
-// 4. GET ANOMALIES
+// 3. GET ANOMALIES
 // ─────────────────────────────────────────
 export async function getAnomalies(sessionId) {
   const response = await API.get(`/api/anomaly?session_id=${sessionId}`);
@@ -90,7 +76,7 @@ export async function getAnomalies(sessionId) {
 }
 
 // ─────────────────────────────────────────
-// 5. GET HISTORY
+// 4. GET HISTORY
 // ─────────────────────────────────────────
 export async function getHistory() {
   const response = await API.get("/api/history");
@@ -98,7 +84,7 @@ export async function getHistory() {
 }
 
 // ─────────────────────────────────────────
-// 6. EXPORT CSV
+// 5. EXPORT CSV
 // ─────────────────────────────────────────
 export async function exportCSV(sessionId) {
   const response = await API.get(`/api/export/csv?session_id=${sessionId}`, {
@@ -116,7 +102,7 @@ export async function exportCSV(sessionId) {
 }
 
 // ─────────────────────────────────────────
-// 7. EXPORT PDF
+// 6. EXPORT PDF
 // ─────────────────────────────────────────
 export async function exportPDF(sessionId) {
   const response = await API.get(`/api/export/pdf?session_id=${sessionId}`, {
@@ -137,7 +123,7 @@ export function getCorrectedCSVUrl(correctionId) {
 }
 
 // ─────────────────────────────────────────
-// 8. RUN AI CORRECTION  ← NEW
+// 7. RUN AI CORRECTION  ← NEW
 // Detects anomalies + AI-corrects them +
 // re-runs models on both versions for comparison
 // ─────────────────────────────────────────
@@ -147,33 +133,4 @@ export async function runCorrection(sessionId) {
   // Returns: { correction_id, anomaly_count, anomalies_corrected,
   //            stats, correction_log, metrics_comparison,
   //            model_comparison, forecasts }
-}
-
-// ─────────────────────────────────────────
-// 9. GET CORRECTION LOG  ← NEW
-// Fetch the full log for a finished correction
-// ─────────────────────────────────────────
-export async function getCorrectionLog(correctionId) {
-  const response = await API.get(`/api/correction/log/${correctionId}`);
-  return response.data;
-  // Returns: { correction_id, session_id, total, corrections[] }
-}
-
-// ─────────────────────────────────────────
-// 10. DOWNLOAD CORRECTED CSV  ← NEW
-// Triggers a browser download of the
-// AI-corrected dataset as a .csv file
-// ─────────────────────────────────────────
-export async function exportCorrectedCSV(correctionId) {
-  const response = await API.get(`/api/correction/export/${correctionId}`, {
-    responseType: "blob",
-  });
-
-  const url = window.URL.createObjectURL(new Blob([response.data]));
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", `corrected_${correctionId}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
 }

@@ -25,9 +25,6 @@ _BACKEND_DIR = os.path.dirname(
 _UPLOADS_DIR = os.path.join(_BACKEND_DIR, "storage", "uploads")
 os.makedirs(_UPLOADS_DIR, exist_ok=True)
 
-def get_storage_dirs() -> dict[str, str]:
-    return {"uploads": _UPLOADS_DIR}
-
 
 def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
     # Save raw CSV to storage/uploads/<session_id[:8]>_<filename>.

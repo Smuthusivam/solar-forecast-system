@@ -49,37 +49,6 @@ def compute_all(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     }
 
 
-def compute_residuals(
-    y_true:     np.ndarray,
-    y_pred:     np.ndarray,
-    timestamps: pd.DatetimeIndex = None,
-) -> pd.DataFrame:
-    # Build a residuals DataFrame (actual - predicted) for anomaly analysis.
-    y_true = np.array(y_true, dtype=float)
-    y_pred = np.array(y_pred, dtype=float)
-
-    residuals     = y_true - y_pred
-    abs_residuals = np.abs(residuals)
-
-    # Percentage error only on daytime rows — nighttime zeros make it meaningless
-    mask      = y_true > 10
-    pct_error = np.zeros_like(y_true)
-    pct_error[mask] = np.abs(residuals[mask] / (y_true[mask] + 1e-8)) * 100
-
-    df = pd.DataFrame({
-        "actual":       y_true,
-        "predicted":    y_pred,
-        "residual":     residuals,
-        "abs_residual": abs_residuals,
-        "pct_error":    pct_error,
-    })
-
-    if timestamps is not None:
-        df.insert(0, "timestamp", timestamps)
-
-    return df
-
-
 def compare_models(metrics_list: list) -> pd.DataFrame:
     # Return a DataFrame of per-model metrics sorted by RMSE ascending.
     df   = pd.DataFrame(metrics_list)
@@ -109,11 +78,6 @@ if __name__ == "__main__":
     poor_metrics = compute_all(y_true, y_poor)
     for k, v in poor_metrics.items():
         print(f"  {k.upper():>6}: {v}")
-
-    idx       = pd.date_range("2024-06-01", periods=n, freq="h")
-    residuals = compute_residuals(y_true, y_good, timestamps=idx)
-    print(f"\nResiduals DataFrame shape: {residuals.shape}")
-    print(residuals.head(4).to_string(index=False))
 
     metrics_list = [
         {**good_metrics, "model": "XGBoost"},

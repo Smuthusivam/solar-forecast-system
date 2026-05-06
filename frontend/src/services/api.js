@@ -3,8 +3,50 @@ import axios from "axios";
 // All API calls go to FastAPI running on port 8000
 const API = axios.create({
   baseURL: "http://localhost:8000",
-  timeout: 120000, // 2 min — AI correction can be slow on large datasets
+  timeout: 600000, // 10 min — AI correction + dual pipeline runs can be slow
 });
+
+const ANOMALY_REPORT_CACHE_PREFIX = "solar-forecast-anomaly-report";
+
+function getAnomalyReportCacheKey(sessionId) {
+  return `${ANOMALY_REPORT_CACHE_PREFIX}:${sessionId}`;
+}
+
+function readJson(value) {
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+export function readAnomalyReportCache(sessionId) {
+  if (typeof window === "undefined" || !sessionId) return null;
+
+  return readJson(window.localStorage.getItem(getAnomalyReportCacheKey(sessionId)));
+}
+
+export function writeAnomalyReportCache(sessionId, patch) {
+  if (typeof window === "undefined" || !sessionId) return null;
+
+  const nextValue = {
+    ...(readAnomalyReportCache(sessionId) || {}),
+    ...patch,
+    sessionId,
+    updatedAt: Date.now(),
+  };
+
+  window.localStorage.setItem(getAnomalyReportCacheKey(sessionId), JSON.stringify(nextValue));
+  return nextValue;
+}
+
+export function clearAnomalyReportCache(sessionId) {
+  if (typeof window === "undefined" || !sessionId) return;
+
+  window.localStorage.removeItem(getAnomalyReportCacheKey(sessionId));
+}
 
 // ─────────────────────────────────────────
 // 1. UPLOAD CSV
@@ -91,7 +133,7 @@ export async function exportPDF(sessionId) {
 }
 
 export function getCorrectedCSVUrl(correctionId) {
-  return `/api/correction/export/${correctionId}`;
+  return `http://localhost:8000/api/correction/export/${correctionId}`;
 }
 
 // ─────────────────────────────────────────

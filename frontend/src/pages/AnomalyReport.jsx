@@ -4,16 +4,24 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ReferenceLine, BarChart, Bar,
+  Legend, ResponsiveContainer, BarChart, Bar, RadarChart,
+  Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ScatterChart,
+  Scatter, ZAxis, Cell,
 } from "recharts";
-import { getAnomalies, runCorrection, getCorrectedCSVUrl } from "../services/api";
+import {
+  getAnomalies,
+  runCorrection,
+  getCorrectedCSVUrl,
+  readAnomalyReportCache,
+  writeAnomalyReportCache,
+} from "../services/api";
 
-// ── Severity badge ──────────────────────────────────────────────────────────
+// ── Badges ──────────────────────────────────────────────────────────────────
 const SeverityBadge = ({ severity }) => {
   const colors = {
-    high: "bg-red-100 text-red-700 border border-red-300",
+    high:   "bg-red-100 text-red-700 border border-red-300",
     medium: "bg-yellow-100 text-yellow-700 border border-yellow-300",
-    low: "bg-blue-100 text-blue-700 border border-blue-300",
+    low:    "bg-blue-100 text-blue-700 border border-blue-300",
   };
   return (
     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors[severity] || colors.low}`}>
@@ -22,128 +30,207 @@ const SeverityBadge = ({ severity }) => {
   );
 };
 
-// ── Confidence badge ────────────────────────────────────────────────────────
 const ConfidenceBadge = ({ confidence }) => {
-  const colors = {
-    high: "bg-green-100 text-green-700",
-    medium: "bg-yellow-100 text-yellow-700",
-    low: "bg-red-100 text-red-700",
-  };
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[confidence] || ""}`}>
-      {confidence} confidence
-    </span>
-  );
+  const colors = { high: "bg-green-100 text-green-700", medium: "bg-yellow-100 text-yellow-700", low: "bg-red-100 text-red-700" };
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[confidence] || ""}`}>{confidence} confidence</span>;
 };
 
-// ── Source badge ────────────────────────────────────────────────────────────
 const SourceBadge = ({ source }) => {
   const map = {
-    ai: { label: "🤖 AI", cls: "bg-purple-100 text-purple-700" },
-    physics_rule: { label: "⚡ Physics", cls: "bg-cyan-100 text-cyan-700" },
+    ai:                     { label: "🤖 AI",            cls: "bg-purple-100 text-purple-700" },
+    physics_rule:           { label: "⚡ Physics",        cls: "bg-cyan-100 text-cyan-700" },
     interpolation_fallback: { label: "📐 Interpolation", cls: "bg-gray-100 text-gray-600" },
   };
   const { label, cls } = map[source] || { label: source, cls: "bg-gray-100 text-gray-600" };
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
 };
 
-// ── Metric delta card ────────────────────────────────────────────────────────
-const MetricDeltaCard = ({ label, data }) => {
-  if (!data) return null;
-  const improved = data.delta < 0; // lower RMSE/MAE = better
-  const r2Metric = label === "R²";
-  const isImproved = r2Metric ? data.delta > 0 : data.delta < 0;
+// ── Section wrapper ──────────────────────────────────────────────────────────
+const Section = ({ title, subtitle, children }) => (
+  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="px-5 py-4 border-b border-gray-100">
+      <h3 className="font-semibold text-gray-900 text-base">{title}</h3>
+      {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+    </div>
+    <div className="p-5">{children}</div>
+  </div>
+);
 
+// ── Metric card ──────────────────────────────────────────────────────────────
+const MetricCard = ({ label, original, corrected, higherIsBetter = false }) => {
+  const isImproved = higherIsBetter ? corrected > original : corrected < original;
+  const pct = original !== 0 ? Math.abs((corrected - original) / original * 100) : 0;
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-1">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
       <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</div>
-      <div className="flex items-end gap-2">
-        <span className="text-2xl font-bold text-gray-800">
-          {data.corrected.toFixed(4)}
-        </span>
-        <span className="text-sm text-gray-400 mb-0.5 line-through">{data.original.toFixed(4)}</span>
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-bold text-gray-900">{corrected?.toFixed(3)}</span>
+        <span className="text-sm text-gray-400 line-through">{original?.toFixed(3)}</span>
       </div>
-      <div className={`text-sm font-semibold ${isImproved ? "text-green-600" : "text-red-500"}`}>
-        {isImproved ? "▼" : "▲"} {Math.abs(data.improvement_pct).toFixed(2)}% {isImproved ? "improvement" : "degraded"}
+      <div className={`flex items-center gap-1 text-sm font-semibold ${isImproved ? "text-green-600" : "text-red-500"}`}>
+        <span>{isImproved ? "▼" : "▲"}</span>
+        <span>{pct.toFixed(2)}% {isImproved ? "improvement" : "degraded"}</span>
       </div>
     </div>
   );
 };
 
-// ── Main component ──────────────────────────────────────────────────────────
+// ── Tooltip formatter ────────────────────────────────────────────────────────
+const fmtWm2 = (v) => v != null ? [`${Number(v).toFixed(2)} W/m²`] : ["—"];
+
+// ── Main component ───────────────────────────────────────────────────────────
 export default function AnomalyReport({ datasetId }) {
   const location = useLocation();
   const routeSessionId = location.state?.result?.session_id || new URLSearchParams(location.search).get("session_id");
   const sessionId = datasetId || routeSessionId;
 
-  const [anomalies, setAnomalies] = useState([]);
+  const [anomalies,        setAnomalies]        = useState([]);
   const [loadingAnomalies, setLoadingAnomalies] = useState(true);
-  const [errorAnomalies, setErrorAnomalies] = useState(null);
-
+  const [errorAnomalies,   setErrorAnomalies]   = useState(null);
   const [correctionResult, setCorrectionResult] = useState(null);
-  const [loadingCorrection, setLoadingCorrection] = useState(false);
-  const [correctionError, setCorrectionError] = useState(null);
+  const [loadingCorrection,setLoadingCorrection]= useState(false);
+  const [correctionError,  setCorrectionError]  = useState(null);
+  const [activeTab,        setActiveTab]        = useState("detection");
+  const [correctionPageSize, setCorrectionPageSize] = useState(25);
 
-  const [activeTab, setActiveTab] = useState("detection"); // "detection" | "correction" | "comparison"
-
-  // Load anomalies on mount
   useEffect(() => {
     if (!sessionId) {
       setLoadingAnomalies(false);
-      setErrorAnomalies("No session found. Run a forecast first, then open Anomalies from the results page.");
+      setErrorAnomalies("No session found.");
       return;
     }
 
-    setLoadingAnomalies(true);
-    getAnomalies(sessionId)
-      .then((res) => setAnomalies(res.anomalies || []))
-      .catch((e) => setErrorAnomalies(e.message))
-      .finally(() => setLoadingAnomalies(false));
+    setErrorAnomalies(null);
+    setCorrectionError(null);
+
+    const cached = readAnomalyReportCache(sessionId);
+    if (cached?.anomalies) {
+      setAnomalies(cached.anomalies);
+      setLoadingAnomalies(false);
+    } else {
+      setLoadingAnomalies(true);
+      getAnomalies(sessionId)
+        .then((res) => {
+          const nextAnomalies = res.anomalies || [];
+          setAnomalies(nextAnomalies);
+          writeAnomalyReportCache(sessionId, { anomalies: nextAnomalies });
+        })
+        .catch((e) => setErrorAnomalies(e.message))
+        .finally(() => setLoadingAnomalies(false));
+    }
+
+    if (cached?.correctionResult) {
+      setCorrectionResult(cached.correctionResult);
+      setActiveTab(cached.activeTab || "comparison");
+    } else {
+      setCorrectionResult(null);
+      setActiveTab("detection");
+    }
   }, [sessionId]);
 
   const handleRunCorrection = async () => {
-    setLoadingCorrection(true);
-    setCorrectionError(null);
+    setLoadingCorrection(true); setCorrectionError(null);
     try {
       const res = await runCorrection(sessionId);
       setCorrectionResult(res);
-      setActiveTab("correction");
+      writeAnomalyReportCache(sessionId, {
+        correctionResult: res,
+        activeTab: "comparison",
+      });
+      setActiveTab("comparison");
     } catch (e) {
       setCorrectionError(e.response?.data?.detail || e.message);
-    } finally {
-      setLoadingCorrection(false);
-    }
+    } finally { setLoadingCorrection(false); }
   };
 
-  // Build chart data for anomaly timeline
-  const timelineData = anomalies.slice(0, 60).map((a) => ({
-    time: new Date(a.timestamp).toLocaleString(),
+  // ── Derived chart data ────────────────────────────────────────────────────
+
+  const timelineData = anomalies.slice(0, 80).map((a) => ({
+    time:  new Date(a.timestamp).toLocaleDateString(),
     value: a.value,
-    severity: a.severity,
   }));
 
-  // Build chart data for before/after forecast comparison
-  const comparisonChartData = (() => {
-    if (!correctionResult?.forecasts) return [];
-    const { original = [], corrected = [], timestamps = [], actuals = [] } = correctionResult.forecasts;
+  const severityBreakdown = ["high", "medium", "low"].map((s) => ({
+    severity: s,
+    count:    anomalies.filter((a) => a.severity === s).length,
+  }));
+
+  const methodBreakdown = [...new Set(anomalies.map((a) => a.method))].map((m) => ({
+    method: m,
+    count:  anomalies.filter((a) => a.method === m).length,
+  }));
+
+  const { forecasts, metrics_comparison: mc, model_comparison: modelComp, correction_log, stats } = correctionResult || {};
+
+  const forecastChartData = (() => {
+    if (!forecasts) return [];
+    const { original = [], corrected = [], timestamps = [], actuals = [] } = forecasts;
     return timestamps.map((ts, i) => ({
-      time: new Date(ts).toLocaleString(),
-      "Original Forecast": original[i] ?? null,
-      "Corrected Forecast": corrected[i] ?? null,
-      "Actual": actuals[i] ?? null,
+      time:               new Date(ts).toLocaleDateString(),
+      "Actual":           actuals[i]   ?? null,
+      "Original Forecast":original[i]  ?? null,
+      "Corrected Forecast":corrected[i] ?? null,
     }));
   })();
 
-  // Build correction log chart — delta per correction
-  const correctionDeltaData = correctionResult?.correction_log?.map((c, i) => ({
-    name: `#${i + 1}`,
-    original: c.original_value,
+  // Error between actual and each forecast
+  const errorChartData = (() => {
+    if (!forecasts) return [];
+    const { original = [], corrected = [], timestamps = [], actuals = [] } = forecasts;
+    return timestamps.map((ts, i) => ({
+      time:             new Date(ts).toLocaleDateString(),
+      "Original Error": actuals[i] != null ? Math.abs(actuals[i] - (original[i] ?? 0)) : null,
+      "Corrected Error":actuals[i] != null ? Math.abs(actuals[i] - (corrected[i] ?? 0)) : null,
+    }));
+  })();
+
+  // Scatter: original prediction vs actual, corrected prediction vs actual
+  const scatterOrig = forecasts
+    ? forecasts.actuals.map((a, i) => ({ actual: a, predicted: forecasts.original[i] })).filter(p => p.actual != null)
+    : [];
+  const scatterCorr = forecasts
+    ? forecasts.actuals.map((a, i) => ({ actual: a, predicted: forecasts.corrected[i] })).filter(p => p.actual != null)
+    : [];
+
+  // Per-model bar data
+  const modelBarData = (() => {
+    if (!modelComp?.original) return [];
+    return Object.keys(modelComp.original).map((m) => ({
+      model:              m,
+      "RMSE (Original)":  modelComp.original[m]?.rmse,
+      "RMSE (Corrected)": modelComp.corrected?.[m]?.rmse,
+      "MAE (Original)":   modelComp.original[m]?.mae,
+      "MAE (Corrected)":  modelComp.corrected?.[m]?.mae,
+    }));
+  })();
+
+  // Radar data — R² scores per model
+  const radarData = (() => {
+    if (!modelComp?.original) return [];
+    return Object.keys(modelComp.original).map((m) => ({
+      model:     m,
+      "R² Before": +(modelComp.original[m]?.r2 * 100).toFixed(2),
+      "R² After":  +(modelComp.corrected?.[m]?.r2 * 100).toFixed(2),
+    }));
+  })();
+
+  // Correction delta scatter
+  const correctionDeltaData = (correction_log || []).map((c, i) => ({
+    name:      `#${i + 1}`,
+    original:  c.original_value,
     corrected: c.corrected_value,
-    delta: Math.abs(c.corrected_value - c.original_value),
-  })) || [];
+    delta:     Math.abs(c.corrected_value - c.original_value),
+  }));
+
+  // Source breakdown for bar chart
+  const sourceBreakdown = [
+    { source: "AI",           count: stats?.ai_corrections             || 0, fill: "#8b5cf6" },
+    { source: "Physics Rule", count: stats?.physics_rule_corrections   || 0, fill: "#06b6d4" },
+    { source: "Interpolation",count: stats?.interpolation_fallbacks    || 0, fill: "#94a3b8" },
+  ];
 
   const tabs = [
-    { key: "detection", label: "🔍 Detection" },
+    { key: "detection",  label: "🔍 Detection" },
     { key: "correction", label: "🤖 AI Correction", disabled: !correctionResult },
     { key: "comparison", label: "📊 Before vs After", disabled: !correctionResult },
   ];
@@ -152,20 +239,16 @@ export default function AnomalyReport({ datasetId }) {
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Anomaly Report</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            AI-powered anomaly detection and intelligent correction for dataset{" "}
-            <code className="bg-gray-100 px-1 rounded">{datasetId}</code>
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">AI-powered detection, validation &amp; correction</p>
         </div>
-
         <div className="flex gap-3 flex-wrap">
           {correctionResult && (
             <a
               href={getCorrectedCSVUrl(correctionResult.session_id)}
-              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition flex items-center gap-2"
+              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
             >
               ⬇ Download Corrected CSV
             </a>
@@ -173,15 +256,9 @@ export default function AnomalyReport({ datasetId }) {
           <button
             onClick={handleRunCorrection}
             disabled={loadingCorrection || loadingAnomalies}
-            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {loadingCorrection ? (
-              <>
-                <span className="animate-spin">⚙</span> Running AI Correction…
-              </>
-            ) : (
-              "🤖 Run AI Correction"
-            )}
+            {loadingCorrection ? <><span className="animate-spin inline-block mr-1">⚙</span>Running AI Correction…</> : "🤖 Run AI Correction"}
           </button>
         </div>
       </div>
@@ -192,14 +269,14 @@ export default function AnomalyReport({ datasetId }) {
         </div>
       )}
 
-      {/* Stats bar */}
+      {/* Top stats */}
       {correctionResult && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Anomalies Found", value: correctionResult.anomaly_count, color: "text-orange-600" },
-            { label: "AI Corrected", value: correctionResult.stats.ai_corrections, color: "text-purple-600" },
-            { label: "Physics Rule", value: correctionResult.stats.physics_rule_corrections, color: "text-cyan-600" },
-            { label: "Interpolated", value: correctionResult.stats.interpolation_fallbacks, color: "text-gray-600" },
+            { label: "Anomalies Found",  value: correctionResult.anomaly_count,          color: "text-orange-600" },
+            { label: "AI Corrected",     value: stats?.ai_corrections,                   color: "text-purple-600" },
+            { label: "Physics Rule",     value: stats?.physics_rule_corrections,          color: "text-cyan-600"   },
+            { label: "Interpolated",     value: stats?.interpolation_fallbacks,           color: "text-slate-500"  },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <div className={`text-3xl font-bold ${color}`}>{value}</div>
@@ -219,17 +296,16 @@ export default function AnomalyReport({ datasetId }) {
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition
               ${activeTab === key
                 ? "bg-white border border-b-white border-gray-200 text-purple-700 -mb-px"
-                : disabled
-                  ? "text-gray-300 cursor-not-allowed"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
+                : disabled ? "text-gray-300 cursor-not-allowed" : "text-gray-500 hover:text-gray-700"}`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── Tab: Detection ──────────────────────────────────────────────────── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB: Detection
+      ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === "detection" && (
         <div className="space-y-6">
           {loadingAnomalies ? (
@@ -238,53 +314,91 @@ export default function AnomalyReport({ datasetId }) {
             <div className="text-red-500 text-sm">Error: {errorAnomalies}</div>
           ) : anomalies.length === 0 ? (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-6 rounded-xl text-center">
-              ✅ No anomalies detected in this dataset!
+              ✅ No anomalies detected — dataset is clean!
             </div>
           ) : (
             <>
-              {/* Summary chips */}
+              {/* Severity chips */}
               <div className="flex gap-3 flex-wrap">
                 {["high", "medium", "low"].map((s) => (
-                  <div key={s} className="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-sm">
-                    <SeverityBadge severity={s} />{" "}
-                    <span className="ml-1 font-semibold">{anomalies.filter((a) => a.severity === s).length}</span>
+                  <div key={s} className="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-sm flex items-center gap-2">
+                    <SeverityBadge severity={s} />
+                    <span className="font-semibold">{anomalies.filter((a) => a.severity === s).length}</span>
                   </div>
                 ))}
               </div>
 
-              {/* Timeline chart */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <h3 className="font-semibold text-gray-800 mb-4">Anomaly Timeline</h3>
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={timelineData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                      formatter={(v) => [`${v} W/m²`, "Value"]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#f97316"
-                      strokeWidth={2}
-                      dot={{ r: 4, fill: "#f97316" }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Anomaly timeline */}
+                <Section title="Anomaly Value Timeline" subtitle="Flagged irradiance values over time">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={timelineData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                      <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                      <Tooltip formatter={fmtWm2} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} name="Value" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Section>
+
+                {/* Severity breakdown */}
+                <Section title="Severity Breakdown" subtitle="Count of anomalies by severity level">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={severityBreakdown} barCategoryGap="35%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="severity" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <Tooltip />
+                      <Bar dataKey="count" name="Anomalies" radius={[6, 6, 0, 0]}>
+                        {severityBreakdown.map((entry) => (
+                          <Cell key={entry.severity} fill={entry.severity === "high" ? "#ef4444" : entry.severity === "medium" ? "#f59e0b" : "#3b82f6"} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Section>
+
+                {/* Detection method breakdown */}
+                <Section title="Detection Method Breakdown" subtitle="How each anomaly was flagged">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={methodBreakdown} barCategoryGap="35%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="method" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <Tooltip />
+                      <Bar dataKey="count" name="Count" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Section>
+
+                {/* Anomaly value distribution */}
+                <Section title="Anomaly Value Distribution" subtitle="Scatter of flagged values by index">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="index" name="Index" tick={{ fontSize: 10 }} label={{ value: "Anomaly #", position: "insideBottom", offset: -4, fontSize: 11 }} />
+                      <YAxis dataKey="value" name="Value" unit=" W/m²" tick={{ fontSize: 11 }} />
+                      <ZAxis range={[30, 30]} />
+                      <Tooltip cursor={{ strokeDasharray: "3 3" }} formatter={(v) => [`${Number(v).toFixed(2)} W/m²`]} />
+                      <Scatter
+                        name="Anomaly"
+                        data={anomalies.map((a, i) => ({ index: i + 1, value: a.value }))}
+                        fill="#f97316"
+                        fillOpacity={0.7}
+                      />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </Section>
               </div>
 
               {/* Anomaly table */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <h3 className="font-semibold text-gray-800">Detected Anomalies ({anomalies.length})</h3>
-                </div>
+              <Section title={`Detected Anomalies (${anomalies.length})`}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                       <tr>
-                        {["Timestamp", "Value (W/m²)", "Method", "Severity"].map((h) => (
+                        {["#", "Timestamp", "Value (W/m²)", "Expected", "Deviation", "Method", "Severity"].map((h) => (
                           <th key={h} className="px-4 py-2 text-left">{h}</th>
                         ))}
                       </tr>
@@ -292,211 +406,333 @@ export default function AnomalyReport({ datasetId }) {
                     <tbody className="divide-y divide-gray-100">
                       {anomalies.map((a, i) => (
                         <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
                           <td className="px-4 py-2 font-mono text-xs">{new Date(a.timestamp).toLocaleString()}</td>
-                          <td className="px-4 py-2 font-semibold text-orange-600">{a.value.toFixed(2)}</td>
-                          <td className="px-4 py-2">
-                            <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">{a.method}</span>
-                          </td>
+                          <td className="px-4 py-2 font-semibold text-orange-600">{a.value?.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-gray-600">{a.expected?.toFixed(2) ?? "—"}</td>
+                          <td className="px-4 py-2 text-red-500">{a.deviation?.toFixed(2) ?? "—"}</td>
+                          <td className="px-4 py-2"><span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">{a.method}</span></td>
                           <td className="px-4 py-2"><SeverityBadge severity={a.severity} /></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </Section>
             </>
           )}
         </div>
       )}
 
-      {/* ── Tab: AI Correction ──────────────────────────────────────────────── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB: AI Correction
+      ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === "correction" && correctionResult && (
         <div className="space-y-6">
 
-          {/* Avg delta chart */}
-          {correctionDeltaData.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h3 className="font-semibold text-gray-800 mb-4">
-                Correction Magnitude — Original vs Corrected Values
-              </h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={correctionDeltaData} barCategoryGap="30%">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Correction source breakdown */}
+            <Section title="Correction Method Breakdown" subtitle="How each anomaly was corrected">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={sourceBreakdown} barCategoryGap="35%">
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="source" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Count" radius={[6, 6, 0, 0]}>
+                    {sourceBreakdown.map((s) => <Cell key={s.source} fill={s.fill} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Section>
+
+            {/* Delta scatter — magnitude of each correction */}
+            <Section title="Correction Magnitude per Point" subtitle="How much each value was shifted">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={correctionDeltaData} barCategoryGap="15%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={Math.floor(correctionDeltaData.length / 10)} />
                   <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
-                  <Tooltip formatter={(v) => [`${v.toFixed(2)} W/m²`]} />
+                  <Tooltip formatter={fmtWm2} />
+                  <Bar dataKey="delta" name="Delta" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Section>
+
+            {/* Original vs corrected values */}
+            <Section title="Original vs Corrected Values" subtitle="Side-by-side comparison per correction" className="lg:col-span-2">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={correctionDeltaData} barCategoryGap="20%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={Math.floor(correctionDeltaData.length / 10)} />
+                  <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                  <Tooltip formatter={fmtWm2} />
                   <Legend />
-                  <Bar dataKey="original" name="Original" fill="#f97316" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="original"  name="Original"  fill="#f97316" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="corrected" name="Corrected" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
-          )}
+            </Section>
+          </div>
 
           {/* Correction log table */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">
-                AI Correction Log ({correctionResult.correction_log.length} corrections)
-              </h3>
-              <div className="text-xs text-gray-400">
-                Avg delta: {correctionResult.stats.avg_correction_delta?.toFixed(2)} W/m²
+          <Section
+            title={`Correction Log (${correction_log?.length ?? 0} entries)`}
+            subtitle={`Avg delta: ${stats?.avg_correction_delta?.toFixed(2)} W/m²  |  Max delta: ${stats?.max_correction_delta?.toFixed(2)} W/m²  |  AI corrections: ${stats?.ai_corrections ?? 0}`}
+          >
+            <div className="space-y-4">
+              {/* Source filter legend */}
+              <div className="flex flex-wrap gap-4 text-xs p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-purple-500 rounded"></div>
+                  <span>AI Corrected (<strong>{stats?.ai_corrections ?? 0}</strong>)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-cyan-500 rounded"></div>
+                  <span>Physics Rule (<strong>{stats?.physics_rule_corrections ?? 0}</strong>)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-gray-500 rounded"></div>
+                  <span>Interpolation (<strong>{stats?.interpolation_fallbacks ?? 0}</strong>)</span>
+                </div>
               </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                  <tr>
-                    {["Timestamp", "Original", "Corrected", "Δ", "Source", "Confidence", "Reasoning"].map((h) => (
-                      <th key={h} className="px-4 py-2 text-left whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {correctionResult.correction_log.map((c, i) => {
-                    const delta = c.corrected_value - c.original_value;
-                    return (
-                      <tr key={i} className="hover:bg-gray-50 align-top">
-                        <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
-                          {new Date(c.timestamp).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-2 font-semibold text-orange-600">
-                          {c.original_value.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-2 font-semibold text-purple-600">
-                          {c.corrected_value.toFixed(2)}
-                        </td>
-                        <td className={`px-4 py-2 font-semibold text-xs ${delta < 0 ? "text-green-600" : "text-red-500"}`}>
-                          {delta > 0 ? "+" : ""}{delta.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-2">
-                          <SourceBadge source={c.correction_source} />
-                        </td>
-                        <td className="px-4 py-2">
-                          <ConfidenceBadge confidence={c.confidence} />
-                        </td>
-                        <td className="px-4 py-2 text-xs text-gray-600 max-w-xs">
-                          {c.reasoning}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── Tab: Before vs After Comparison ────────────────────────────────── */}
-      {activeTab === "comparison" && correctionResult && (
-        <div className="space-y-6">
-
-          {/* Metric cards */}
-          {correctionResult.metrics_comparison && Object.keys(correctionResult.metrics_comparison).length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {Object.entries(correctionResult.metrics_comparison).map(([key, data]) => (
-                <MetricDeltaCard key={key} label={key.toUpperCase()} data={data} />
-              ))}
-            </div>
-          )}
-
-          {/* Forecast comparison chart */}
-          {comparisonChartData.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h3 className="font-semibold text-gray-800 mb-1">
-                Forecast: Original Data vs AI-Corrected Data
-              </h3>
-              <p className="text-xs text-gray-400 mb-4">
-                Compare how ML predictions change after anomaly correction
-              </p>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={comparisonChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                    formatter={(v) => [`${v?.toFixed(2)} W/m²`]}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="Actual"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="Original Forecast"
-                    stroke="#f97316"
-                    strokeWidth={2}
-                    dot={false}
-                    strokeDasharray="5 3"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="Corrected Forecast"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Per-model comparison table */}
-          {correctionResult.model_comparison?.original && (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <h3 className="font-semibold text-gray-800">Per-Model Metrics: Before vs After Correction</h3>
-              </div>
-              <div className="overflow-x-auto">
+              {/* Correction table */}
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0">
                     <tr>
-                      <th className="px-4 py-2 text-left">Model</th>
-                      {["RMSE", "MAE", "R²", "MAPE"].map((m) => (
-                        <>
-                          <th key={`${m}-orig`} className="px-3 py-2 text-center text-orange-500">{m} (Orig)</th>
-                          <th key={`${m}-corr`} className="px-3 py-2 text-center text-purple-500">{m} (Corr)</th>
-                        </>
+                      {["#", "Timestamp", "Original", "Corrected", "Δ", "Source", "Confidence", "Reasoning"].map((h) => (
+                        <th key={h} className="px-4 py-2 text-left whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {Object.keys(correctionResult.model_comparison.original).map((model) => {
-                      const orig = correctionResult.model_comparison.original[model];
-                      const corr = correctionResult.model_comparison.corrected?.[model] || {};
+                    {correction_log?.map((c, i) => {
+                      const delta = c.corrected_value - c.original_value;
+                      const sourceColor = c.correction_source === "ai" ? "bg-purple-50" : c.correction_source === "physics_rule" ? "bg-cyan-50" : "bg-gray-50";
+                      const sourceBorder = c.correction_source === "ai" ? "border-l-4 border-l-purple-500" : c.correction_source === "physics_rule" ? "border-l-4 border-l-cyan-500" : "border-l-4 border-l-gray-400";
                       return (
-                        <tr key={model} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 font-semibold capitalize">{model}</td>
-                          {["rmse", "mae", "r2", "mape"].map((metric) => (
-                            <>
-                              <td key={`${model}-${metric}-orig`} className="px-3 py-2 text-center text-orange-600">
-                                {orig[metric]?.toFixed(4) ?? "—"}
-                              </td>
-                              <td
-                                key={`${model}-${metric}-corr`}
-                                className={`px-3 py-2 text-center font-semibold ${
-                                  metric === "r2"
-                                    ? (corr[metric] > orig[metric] ? "text-green-600" : "text-red-500")
-                                    : (corr[metric] < orig[metric] ? "text-green-600" : "text-red-500")
-                                }`}
-                              >
-                                {corr[metric]?.toFixed(4) ?? "—"}
-                              </td>
-                            </>
-                          ))}
+                        <tr key={i} className={`hover:bg-yellow-50 align-top ${sourceColor} ${sourceBorder}`}>
+                          <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
+                          <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{new Date(c.timestamp).toLocaleString()}</td>
+                          <td className="px-4 py-2 font-semibold text-orange-600">{c.original_value.toFixed(2)}</td>
+                          <td className={`px-4 py-2 font-bold text-lg ${c.correction_source === "ai" ? "text-purple-700" : c.correction_source === "physics_rule" ? "text-cyan-700" : "text-gray-700"}`}>
+                            {c.corrected_value.toFixed(2)}
+                          </td>
+                          <td className={`px-4 py-2 font-semibold text-xs ${delta < 0 ? "text-green-600" : "text-red-500"}`}>
+                            {delta > 0 ? "+" : ""}{delta.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-2"><SourceBadge source={c.correction_source} /></td>
+                          <td className="px-4 py-2"><ConfidenceBadge confidence={c.confidence} /></td>
+                          <td className="px-4 py-2 text-xs text-gray-600 max-w-xs">{c.reasoning}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination info */}
+              <div className="text-xs text-gray-500 text-center">
+                Showing {correction_log?.length ?? 0} entries total
+              </div>
             </div>
+          </Section>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB: Before vs After
+      ══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "comparison" && correctionResult && (
+        <div className="space-y-6">
+
+          {/* ── Ensemble metric cards ── */}
+          {mc && Object.keys(mc).length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Ensemble Metrics</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {mc.rmse  && <MetricCard label="RMSE"  original={mc.rmse.original}  corrected={mc.rmse.corrected}  />}
+                {mc.mae   && <MetricCard label="MAE"   original={mc.mae.original}   corrected={mc.mae.corrected}   />}
+                {mc.r2    && <MetricCard label="R²"    original={mc.r2.original}     corrected={mc.r2.corrected}    higherIsBetter />}
+                {mc.mape  && <MetricCard label="MAPE"  original={mc.mape?.original}  corrected={mc.mape?.corrected} />}
+              </div>
+            </div>
+          )}
+
+          {/* ── Chart 1: Forecast overlay ── */}
+          {forecastChartData.length > 0 && (
+            <Section
+              title="Forecast Comparison — Original vs Corrected vs Actual"
+              subtitle="How model predictions shift after AI correction"
+            >
+              <ResponsiveContainer width="100%" height={320}>
+                <LineChart data={forecastChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={fmtWm2} />
+                  <Legend />
+                  <Line type="monotone" dataKey="Actual"             stroke="#22c55e" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Original Forecast"  stroke="#f97316" strokeWidth={2} dot={false} strokeDasharray="6 3" />
+                  <Line type="monotone" dataKey="Corrected Forecast" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </Section>
+          )}
+
+          {/* ── Chart 2: Absolute error over time ── */}
+          {errorChartData.length > 0 && (
+            <Section
+              title="Absolute Prediction Error Over Time"
+              subtitle="Lower is better — gap between forecast and actual readings"
+            >
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={errorChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={fmtWm2} />
+                  <Legend />
+                  <Line type="monotone" dataKey="Original Error"  stroke="#f97316" strokeWidth={2} dot={false} strokeDasharray="6 3" />
+                  <Line type="monotone" dataKey="Corrected Error" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </Section>
+          )}
+
+          {/* ── Chart 3 + 4: Scatter — predicted vs actual ── */}
+          {scatterOrig.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Section title="Original: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ScatterChart>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="actual"    name="Actual"    unit=" W/m²" tick={{ fontSize: 10 }} label={{ value: "Actual", position: "insideBottom", offset: -4, fontSize: 11 }} />
+                    <YAxis dataKey="predicted" name="Predicted" unit=" W/m²" tick={{ fontSize: 10 }} label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                    <ZAxis range={[20, 20]} />
+                    <Tooltip formatter={(v) => [`${Number(v).toFixed(2)} W/m²`]} />
+                    <Scatter data={scatterOrig} fill="#f97316" fillOpacity={0.5} name="Original" />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </Section>
+
+              <Section title="Corrected: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ScatterChart>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="actual"    name="Actual"    unit=" W/m²" tick={{ fontSize: 10 }} label={{ value: "Actual", position: "insideBottom", offset: -4, fontSize: 11 }} />
+                    <YAxis dataKey="predicted" name="Predicted" unit=" W/m²" tick={{ fontSize: 10 }} label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                    <ZAxis range={[20, 20]} />
+                    <Tooltip formatter={(v) => [`${Number(v).toFixed(2)} W/m²`]} />
+                    <Scatter data={scatterCorr} fill="#8b5cf6" fillOpacity={0.5} name="Corrected" />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </Section>
+            </div>
+          )}
+
+          {/* ── Chart 5: Per-model RMSE + MAE grouped bar ── */}
+          {modelBarData.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Section title="Per-Model RMSE: Before vs After" subtitle="Lower RMSE = better">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={modelBarData} barCategoryGap="30%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="model" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                    <Tooltip formatter={fmtWm2} />
+                    <Legend />
+                    <Bar dataKey="RMSE (Original)"  fill="#f97316" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="RMSE (Corrected)" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Section>
+
+              <Section title="Per-Model MAE: Before vs After" subtitle="Lower MAE = better">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={modelBarData} barCategoryGap="30%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="model" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                    <Tooltip formatter={fmtWm2} />
+                    <Legend />
+                    <Bar dataKey="MAE (Original)"  fill="#fb923c" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="MAE (Corrected)" fill="#a78bfa" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Section>
+            </div>
+          )}
+
+          {/* ── Chart 6: Radar — R² per model ── */}
+          {radarData.length > 0 && (
+            <Section title="Model R² Score Comparison" subtitle="Higher = better fit — before vs after correction">
+              <ResponsiveContainer width="100%" height={280}>
+                <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="model" tick={{ fontSize: 12 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
+                  <Radar name="R² Before" dataKey="R² Before" stroke="#f97316" fill="#f97316" fillOpacity={0.25} />
+                  <Radar name="R² After"  dataKey="R² After"  stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} />
+                  <Legend />
+                  <Tooltip formatter={(v) => [`${v}%`]} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </Section>
+          )}
+
+          {/* ── Per-model full metrics table ── */}
+          {modelComp?.original && (
+            <Section title="Full Per-Model Metrics Table" subtitle="All metrics before and after correction">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Model</th>
+                      {["RMSE", "MAE", "R²", "MAPE"].map((m) => (
+                        <th key={m} colSpan={2} className="px-3 py-2 text-center border-l border-gray-200">{m}</th>
+                      ))}
+                    </tr>
+                    <tr className="border-t border-gray-100">
+                      <th className="px-4 py-1" />
+                      {["RMSE", "MAE", "R²", "MAPE"].map((m) => (
+                        <>
+                          <th key={`${m}-o`} className="px-3 py-1 text-center text-orange-500 font-normal border-l border-gray-200">Before</th>
+                          <th key={`${m}-c`} className="px-3 py-1 text-center text-purple-500 font-normal">After</th>
+                        </>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {Object.keys(modelComp.original).map((model) => {
+                      const orig = modelComp.original[model];
+                      const corr = modelComp.corrected?.[model] || {};
+                      return (
+                        <tr key={model} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-semibold capitalize">{model}</td>
+                          {["rmse", "mae", "r2", "mape"].map((metric) => {
+                            const higherBetter = metric === "r2";
+                            const improved = higherBetter ? corr[metric] > orig[metric] : corr[metric] < orig[metric];
+                            return (
+                              <>
+                                <td key={`${model}-${metric}-o`} className="px-3 py-2 text-center text-orange-600 border-l border-gray-100">
+                                  {orig[metric]?.toFixed(4) ?? "—"}
+                                </td>
+                                <td key={`${model}-${metric}-c`} className={`px-3 py-2 text-center font-semibold ${improved ? "text-green-600" : "text-red-500"}`}>
+                                  {corr[metric]?.toFixed(4) ?? "—"}
+                                </td>
+                              </>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
           )}
         </div>
       )}

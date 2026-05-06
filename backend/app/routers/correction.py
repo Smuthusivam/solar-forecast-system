@@ -6,6 +6,7 @@ Endpoints:
   GET  /api/correction/log/{session_id}   → get correction log JSON
 """
 
+import asyncio
 import io
 import uuid
 import logging
@@ -96,15 +97,15 @@ async def run_correction(dataset_id: str):
     )
     stats = compute_correction_stats(correction_log)
 
-    # Step 3 — Run ML pipeline on both original and corrected data
+    # Step 3 — Run ML pipeline on both versions in parallel
     try:
         from app.services.pipeline import run_pipeline
 
-        logger.info("Running pipeline on original data...")
-        results_original  = run_pipeline(df_original,  column_map)
-
-        logger.info("Running pipeline on corrected data...")
-        results_corrected = run_pipeline(df_corrected, column_map)
+        logger.info("Running original + corrected pipelines in parallel...")
+        results_original, results_corrected = await asyncio.gather(
+            asyncio.to_thread(run_pipeline, df_original,  column_map),
+            asyncio.to_thread(run_pipeline, df_corrected, column_map),
+        )
 
         metrics_comparison = _metrics_delta(
             results_original["ensemble_metrics"],

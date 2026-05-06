@@ -18,9 +18,11 @@ class DetectionMode(str, Enum):
 
 
 class ForecastHorizon(int, Enum):
-    H24 = 24
-    H48 = 48
-    H72 = 72
+    H24  = 24
+    H48  = 48
+    H72  = 72
+    H120 = 120
+    H168 = 168
 
 
 class AnomalySeverity(str, Enum):
@@ -78,8 +80,8 @@ class UploadResponse(BaseModel):
 class ForecastRequest(BaseModel):
     # Body sent by the frontend to POST /api/forecast/run.
     session_id: str
-    horizon:    ForecastHorizon = ForecastHorizon.H24
-    train_size: int = Field(80, ge=50, le=95, description="Training data percentage (50–95)")
+    horizon:    int = Field(24, ge=1, le=8760, description="Forecast horizon in hours (1–8760)")
+    train_size: int = Field(80, ge=50, le=95,  description="Training data percentage (50–95)")
 
 
 class ModelMetrics(BaseModel):
@@ -115,6 +117,7 @@ class ForecastResponse(BaseModel):
     horizon:            int  = Field(..., description="Forecast horizon in hours")
     detection_mode:     DetectionMode
     forecast:           list[ForecastPoint]
+    future_forecast:    list[ForecastPoint] = Field(default_factory=list, description="True future predictions beyond last known data point")
     ensemble_metrics:   ModelMetrics
     per_model:          list[PerModelForecast]
     feature_importance: Optional[dict[str, float]] = None

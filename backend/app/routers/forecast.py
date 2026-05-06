@@ -78,6 +78,7 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
         run_id = -1  # don't crash the response over a DB write failure
 
     forecast_points = [ForecastPoint(**p) for p in result["forecast"]]
+    future_points   = [ForecastPoint(**p) for p in result.get("future_forecast", [])]
 
     per_model = [
         PerModelForecast(
@@ -96,6 +97,7 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
         horizon            = int(request.horizon),
         detection_mode     = DetectionMode(detection_mode),
         forecast           = forecast_points,
+        future_forecast    = future_points,
         ensemble_metrics   = ModelMetrics(**em),
         per_model          = per_model,
         feature_importance = result.get("feature_importance"),

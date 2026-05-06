@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import ModelComparison from './pages/ModelComparison'
 import AnomalyReport from './pages/AnomalyReport'
 import History from './pages/History'
+import Forecast from './pages/Forecast'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
       <Routes>
         <Route path="/"          element={<Upload />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/forecast"  element={<Forecast />} />
         <Route path="/compare"   element={<ModelComparison />} />
         <Route path="/anomalies" element={<AnomalyReport />} />
         <Route path="/history"   element={<History />} />

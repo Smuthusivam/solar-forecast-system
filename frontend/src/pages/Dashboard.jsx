@@ -304,10 +304,10 @@ function Dashboard() {
 
   // ── Tabs ───────────────────────────────────────────────────────────────
   const tabs = [
-    { id: "forecast", label: "Forecast"  },
+    { id: "forecast", label: "Forecast"      },
     { id: "data",     label: "Data Overview" },
-    { id: "patterns", label: "Patterns"  },
-    { id: "errors",   label: "Error Analysis" },
+    { id: "patterns", label: "Patterns"      },
+    { id: "errors",   label: "Error Analysis"},
   ];
 
   return (
@@ -338,6 +338,10 @@ function Dashboard() {
             disabled={exporting !== null}
             className="border border-gray-300 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50">
             {exporting === "pdf" ? "..." : "PDF"}
+          </button>
+          <button onClick={() => navigate("/forecast", { state: { sessionId: result.session_id, filename: result.filename } })}
+            className="border border-green-300 text-green-600 px-4 py-2 rounded-lg text-sm hover:bg-green-50">
+            Forecast →
           </button>
           <button onClick={() => navigate("/compare", { state: { forecast, result } })}
             className="border border-blue-300 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">
@@ -408,9 +412,9 @@ function Dashboard() {
             </ResponsiveContainer>
           </Card>
 
-          <Card title="Ensemble Weight Distribution"
-            subtitle="Weights computed inversely from validation RMSE — best model gets highest weight">
-            <div className="grid grid-cols-3 gap-4">
+          <Card title="Model Weight Distribution"
+            subtitle="Weights computed inversely from validation RMSE — lower error = higher weight">
+            <div className="grid grid-cols-2 gap-4">
               {forecast.per_model.map(m => (
                 <div key={m.model_name} className="bg-gray-50 rounded-lg p-4 text-center">
                   <p className="text-sm text-gray-500 mb-1">{m.model_name}</p>
@@ -450,8 +454,9 @@ function Dashboard() {
         </>
       )}
 
+
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* TAB 2 — DATA OVERVIEW                                            */}
+      {/* TAB 3 — DATA OVERVIEW                                            */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       {activeTab === "data" && (
         <>

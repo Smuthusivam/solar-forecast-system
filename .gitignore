@@ -68,6 +68,13 @@ desktop.ini
 *.swp
 
 # ─────────────────────────────────────────────
+# Storage directories (exports, uploads, db files)
+# ─────────────────────────────────────────────
+backend/storage/exports/
+backend/storage/db/
+backend/storage/uploads/
+
+# ─────────────────────────────────────────────
 # Logs and temp files
 # ─────────────────────────────────────────────
 *.log

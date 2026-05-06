@@ -15,20 +15,8 @@ const PRESETS = [
   { label: "48 h",   value: 48,  desc: "2 days"    },
   { label: "72 h",   value: 72,  desc: "3 days"    },
   { label: "1 week", value: 168, desc: "7 days"    },
-  { label: "Month",  value: -1,  desc: "Pick month" },
   { label: "Custom", value: 0,   desc: "Set hours"  },
 ];
-
-const MONTH_NAMES = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
-];
-
-// Hours from now (end of dataset) to cover the entire selected month
-function hoursForMonth(year, month) {
-  // month is 1-based
-  return new Date(year, month, 0).getDate() * 24; // days-in-month × 24
-}
 
 function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
   return (
@@ -49,22 +37,15 @@ export default function Forecast() {
   const sessionId = location.state?.sessionId || location.state?.result?.session_id;
   const filename  = location.state?.filename  || location.state?.result?.filename || "dataset";
 
-  const now = new Date();
   const [selectedPreset, setSelectedPreset] = useState(24);
   const [customHours,    setCustomHours]    = useState(96);
-  const [targetMonth,    setTargetMonth]    = useState(now.getMonth() + 1); // 1-based
-  const [targetYear,     setTargetYear]     = useState(now.getFullYear());
   const [trainSize,      setTrainSize]      = useState(80);
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState(null);
   const [result,         setResult]         = useState(null);
   const [activeTab,      setActiveTab]      = useState("chart");
 
-  const horizon = selectedPreset === -1
-    ? hoursForMonth(targetYear, targetMonth)
-    : selectedPreset === 0
-      ? customHours
-      : selectedPreset;
+  const horizon = selectedPreset === 0 ? customHours : selectedPreset;
 
   const handleRun = async () => {
     if (!sessionId) { setError("No session found. Upload a CSV first."); return; }
@@ -173,31 +154,6 @@ export default function Forecast() {
               </button>
             ))}
           </div>
-
-          {/* Month picker */}
-          {selectedPreset === -1 && (
-            <div className="mt-3 flex items-center gap-3 flex-wrap">
-              <select
-                value={targetMonth}
-                onChange={e => setTargetMonth(+e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {MONTH_NAMES.map((m, i) => (
-                  <option key={i} value={i + 1}>{m}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min={2000} max={2100}
-                value={targetYear}
-                onChange={e => setTargetYear(+e.target.value)}
-                className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <span className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-lg">
-                {hoursForMonth(targetYear, targetMonth)}h = {new Date(targetYear, targetMonth, 0).getDate()} days
-              </span>
-            </div>
-          )}
 
           {/* Custom hours input */}
           {selectedPreset === 0 && (

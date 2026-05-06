@@ -62,6 +62,21 @@ class DetectedColumns(BaseModel):
     timestamp:      Optional[str] = Field(None, description="Datetime column name")
 
 
+class DataStats(BaseModel):
+    # Summary stats computed during preprocessing.
+    rows_raw:          int
+    rows_clean:        int
+    pct_clean:         float
+    columns_available: list[str]
+    irradiance_mean:   float
+    irradiance_max:    float
+    irradiance_min:    float
+    date_range_days:   int
+    date_start:        str
+    date_end:          str
+    detection_mode:    Optional[str] = None
+
+
 class UploadResponse(BaseModel):
     # Returned right after upload; the frontend uses session_id for all follow-up calls.
     session_id:       str   = Field(..., description="UUID identifying this upload session")
@@ -73,6 +88,7 @@ class UploadResponse(BaseModel):
     confidence:       float = Field(..., ge=0.0, le=1.0, description="Claude API confidence (0–1)")
     preview:          list[dict] = Field(default_factory=list, description="First 5 rows as dicts")
     warnings:         list[str]  = Field(default_factory=list, description="Non-fatal detection issues")
+    data_stats:       Optional[DataStats] = None
 
 
 # ── Forecast ──────────────────────────────────────────────────────────────────

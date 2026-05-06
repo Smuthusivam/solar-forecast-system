@@ -195,6 +195,7 @@ async def upload_csv(file: UploadFile = File(...)):
         detected_columns = detected_cols_schema,
         detection_mode   = DetectionMode(detection["detection_mode"]),
         confidence       = detection["confidence"],
+        data_stats       = meta,
         preview          = sample_rows[:5],
         warnings         = detection["warnings"],
     )

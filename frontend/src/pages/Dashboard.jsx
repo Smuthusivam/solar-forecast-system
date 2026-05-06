@@ -173,6 +173,11 @@ function Dashboard() {
     const trainCount = Math.floor(points.length / 0.2 * 0.8);
     const totalRows  = trainCount + points.length;
 
+    const dataStats = result?.data_stats;
+    const meanActuals = mean(actuals);
+    const minActuals = actuals.length ? Math.min(...actuals) : 0;
+    const maxActuals = actuals.length ? Math.max(...actuals) : 0;
+
     return {
       totalPoints: points.length,
       trainRows:   trainCount,
@@ -181,11 +186,11 @@ function Dashboard() {
         ? Object.keys(forecast.feature_importance).length
         : 22,
       irradiance: {
-        mean:   mean(actuals),
+        mean:   dataStats?.irradiance_mean ?? meanActuals,
         median,
         std:    std(actuals),
-        min:    Math.min(...actuals),
-        max:    Math.max(...actuals),
+        min:    dataStats?.irradiance_min ?? minActuals,
+        max:    dataStats?.irradiance_max ?? maxActuals,
       },
       residuals: {
         mean: mean(residuals),

@@ -45,8 +45,11 @@ class LightGBMModel:
         self.eval_fraction         = default_params.pop("eval_fraction")
         self.min_eval_rows         = default_params.pop("min_eval_rows")
 
-        self.params          = default_params
-        self.model           = LGBMRegressor(**self.params)
+        self.params = default_params
+        self.model  = LGBMRegressor(
+            **self.params,
+            early_stopping_rounds=self.early_stopping_rounds,
+        )
         self.feature_columns = None
 
     def train(self, X_train: pd.DataFrame, y_train: pd.Series) -> None:
@@ -64,13 +67,7 @@ class LightGBMModel:
         if use_eval:
             X_tr, X_val = X_all.iloc[:split_idx], X_all.iloc[split_idx:]
             y_tr, y_val = y_all[:split_idx], y_all[split_idx:]
-            self.model.fit(
-                X_tr,
-                y_tr,
-                eval_set=[(X_val, y_val)],
-                verbose=False,
-                early_stopping_rounds=self.early_stopping_rounds,
-            )
+            self.model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)])
         else:
             self.model.fit(X_all, y_all)
 
@@ -123,8 +120,8 @@ class LightGBMModel:
         self.params          = payload["params"]
         training_params      = payload.get("training_params", {})
         self.early_stopping_rounds = training_params.get("early_stopping_rounds", self.early_stopping_rounds)
-        self.eval_fraction         = training_params.get("eval_fraction", self.eval_fraction)
-        self.min_eval_rows         = training_params.get("min_eval_rows", self.min_eval_rows)
+        self.eval_fraction         = training_params.get("eval_fraction",         self.eval_fraction)
+        self.min_eval_rows         = training_params.get("min_eval_rows",         self.min_eval_rows)
         print(f"[LightGBM] Model loaded from {path}")
 
 

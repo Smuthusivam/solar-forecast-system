@@ -46,9 +46,6 @@ _HOURLY_MAX_GHI = {
     20: 10, 21: 0,  22: 0,  23: 0,
 }
 
-# Consecutive-run length above which we treat the block as a natural weather event
-CONSECUTIVE_RUN_THRESHOLD = 3
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Physical validation filters — applied AFTER statistical detection
@@ -88,33 +85,6 @@ def _is_weather_coherent(value: float, ts: pd.Timestamp, df: pd.DataFrame) -> bo
 
     return True  # no weather data or no conflict
 
-
-def _find_consecutive_runs(timestamps: list) -> set:
-    """
-    Return a set of timestamps that belong to a consecutive run of 3+ flagged points.
-    These are likely real weather events (cloud passages), not sensor errors.
-    """
-    if len(timestamps) < CONSECUTIVE_RUN_THRESHOLD:
-        return set()
-
-    # Sort and find runs of consecutive hourly timestamps
-    sorted_ts = sorted(timestamps)
-    run_members: set = set()
-    run: list = [sorted_ts[0]]
-
-    for i in range(1, len(sorted_ts)):
-        gap = (sorted_ts[i] - sorted_ts[i - 1]).total_seconds() / 3600
-        if gap <= 1.5:  # consecutive hourly readings
-            run.append(sorted_ts[i])
-        else:
-            if len(run) >= CONSECUTIVE_RUN_THRESHOLD:
-                run_members.update(run)
-            run = [sorted_ts[i]]
-
-    if len(run) >= CONSECUTIVE_RUN_THRESHOLD:
-        run_members.update(run)
-
-    return run_members
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -279,33 +249,51 @@ def _merge_anomalies(all_anomalies: list[dict]) -> list[dict]:
 
 def _apply_physical_filters(anomalies: list[dict], df: pd.DataFrame) -> list[dict]:
     """
-    Remove anomalies that are physically explainable:
-    1. Value is within hourly solar maximum (not physically impossible)
-    2. Weather columns support the reading (cloud cover coherence)
-    3. Part of a consecutive run of 3+ flagged points (likely a real weather event)
+    Remove anomalies that are genuinely explainable by physics or weather:
+    1. Only dismiss if value is physically impossible AND weather-incoherent together
+       (i.e. dismiss only clear false positives, not borderline outliers)
+    2. Only dismiss consecutive runs of 6+ points (very extended weather events);
+       shorter runs of 3-5 may still be sensor faults
     Returns only genuinely suspicious readings.
     """
-    # Find consecutive runs first (operate on Timestamp objects)
     timestamps = [a["timestamp"] for a in anomalies]
-    weather_event_ts = _find_consecutive_runs(timestamps)
+    # Raise the consecutive run threshold so shorter spikes are still flagged
+    weather_event_ts = set()
+    if len(timestamps) >= 6:
+        sorted_ts = sorted(timestamps)
+        run: list = [sorted_ts[0]]
+        for i in range(1, len(sorted_ts)):
+            gap = (sorted_ts[i] - sorted_ts[i - 1]).total_seconds() / 3600
+            if gap <= 1.5:
+                run.append(sorted_ts[i])
+            else:
+                if len(run) >= 6:
+                    weather_event_ts.update(run)
+                run = [sorted_ts[i]]
+        if len(run) >= 6:
+            weather_event_ts.update(run)
 
-    filtered   = []
-    dismissed  = 0
+    filtered  = []
+    dismissed = 0
 
     for a in anomalies:
         ts    = a["timestamp"]
         value = a["value"]
         hour  = ts.hour
 
-        # ── Filter 1: physically impossible value for this hour ───────────
-        if not _is_physically_impossible(value, hour):
-            # Value is within possible range — check if it's also weather-coherent
-            if _is_weather_coherent(value, ts, df):
-                # Statistically unusual but physically plausible → dismiss
-                dismissed += 1
-                continue
+        # Dismiss only if physically impossible (exceeds hourly ceiling by >10%)
+        if _is_physically_impossible(value, hour):
+            # Keep — physically impossible readings are genuine anomalies
+            filtered.append(a)
+            continue
 
-        # ── Filter 2: consecutive run → likely a real cloud/weather event ─
+        # Dismiss only if weather explicitly contradicts the reading AND
+        # the anomaly severity is low (high/medium get through regardless)
+        if not _is_weather_coherent(value, ts, df) and a["severity"] == "low":
+            dismissed += 1
+            continue
+
+        # Dismiss only very long consecutive runs (6+) as weather events
         if ts in weather_event_ts:
             dismissed += 1
             continue
@@ -313,8 +301,9 @@ def _apply_physical_filters(anomalies: list[dict], df: pd.DataFrame) -> list[dic
         filtered.append(a)
 
     logger.info(
-        "Physical filter: %d dismissed (%d weather events, %d weather-coherent), %d remain",
-        dismissed, len(weather_event_ts & set(timestamps)),
+        "Physical filter: %d dismissed (%d long weather runs, %d weather-incoherent low), %d remain",
+        dismissed,
+        len(weather_event_ts & set(timestamps)),
         dismissed - len(weather_event_ts & set(timestamps)),
         len(filtered),
     )

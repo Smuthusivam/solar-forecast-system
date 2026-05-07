@@ -28,8 +28,11 @@ GHI_MAX = 1200.0
 # Nighttime hours — irradiance must be 0
 NIGHT_HOURS = set(range(0, 5)) | set(range(21, 24))
 
-# Anomalies per Claude call — increased to 100 for efficiency; Claude can handle ~8192 tokens
-BATCH_SIZE = 100
+# Anomalies per Claude call — smaller batches = more accurate JSON from Claude
+BATCH_SIZE = 20
+
+# Max simultaneous Claude API calls — avoids rate-limit 429s
+MAX_CONCURRENT = 10
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,8 +75,8 @@ def _is_physically_plausible(value: float, ts, df: pd.DataFrame, idx: int) -> bo
         return value == 0
 
     deviation_pct = abs(value - median) / median
-    # Only dismiss if very close to neighbours (within 60%) — let Claude judge borderline cases
-    return deviation_pct < 0.60
+    # Only dismiss if very close to neighbours (within 20%) — let Claude judge everything else
+    return deviation_pct < 0.20
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,15 +179,20 @@ def _sanitise_raw_json(raw: str) -> str:
     return "".join(result).strip()
 
 
-async def _call_claude_batch(batch_items: List[Dict], column_map: Dict[str, str]) -> List[Dict]:
+async def _call_claude_batch(
+    batch_items: List[Dict],
+    column_map: Dict[str, str],
+    semaphore: asyncio.Semaphore,
+) -> List[Dict]:
     """Send one batch to Claude and return a parsed list of correction results."""
-    prompt = _build_batch_prompt(batch_items, column_map)
+    async with semaphore:
+        prompt = _build_batch_prompt(batch_items, column_map)
 
-    response = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=8192,
-        messages=[{"role": "user", "content": prompt}],
-    )
+        response = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
     raw = response.content[0].text.strip()
 
@@ -328,16 +336,19 @@ async def _correct_all_async(
         len(ai_batch),
     )
 
-    # ── Split into batches and fire all in parallel ───────────────────────────
+    # ── Split into batches and fire all concurrently ─────────────────────────
     batches = [
         (ai_batch[s: s + BATCH_SIZE], ai_batch_meta[s: s + BATCH_SIZE])
         for s in range(0, len(ai_batch), BATCH_SIZE)
     ]
-    logger.info("Firing %d Claude batch(es) in parallel (%d anomalies total)...",
-                len(batches), len(ai_batch))
+    logger.info(
+        "Firing %d Claude batch(es) concurrently (max %d at a time) — %d anomalies total",
+        len(batches), MAX_CONCURRENT, len(ai_batch),
+    )
 
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
     batch_responses = await asyncio.gather(
-        *[_call_claude_batch(items, column_map) for items, _ in batches],
+        *[_call_claude_batch(items, column_map, semaphore) for items, _ in batches],
         return_exceptions=True,
     )
 

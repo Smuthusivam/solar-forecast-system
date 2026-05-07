@@ -125,6 +125,55 @@ export function getCorrectedCSVUrl(correctionId) {
   return `${API_BASE_URL}/api/correction/export/${correctionId}`;
 }
 
+// Build and download a before-vs-after comparison CSV from correction result data.
+export function downloadComparisonCSV(correctionResult) {
+  const { forecasts, correction_log = [] } = correctionResult;
+  if (!forecasts?.timestamps?.length) return;
+
+  const { timestamps, original, corrected, actuals } = forecasts;
+
+  // Build a lookup of corrected points from the correction log for extra detail
+  const logByTs = {};
+  for (const entry of correction_log) {
+    logByTs[entry.timestamp] = entry;
+  }
+
+  const header = ["timestamp", "actual", "original_forecast", "corrected_forecast", "forecast_delta", "original_value", "corrected_value", "value_delta", "correction_source", "confidence", "reasoning"];
+  const rows = timestamps.map((ts, i) => {
+    const log = logByTs[ts] || {};
+    const forecastDelta = (corrected[i] != null && original[i] != null)
+      ? (corrected[i] - original[i]).toFixed(4)
+      : "";
+    const valueDelta = (log.corrected_value != null && log.original_value != null)
+      ? (log.corrected_value - log.original_value).toFixed(4)
+      : "";
+    return [
+      ts,
+      actuals[i]   ?? "",
+      original[i]  ?? "",
+      corrected[i] ?? "",
+      forecastDelta,
+      log.original_value  ?? "",
+      log.corrected_value ?? "",
+      valueDelta,
+      log.correction_source ?? "",
+      log.confidence        ?? "",
+      (log.reasoning ?? "").replace(/,/g, ";"),  // escape commas in reasoning
+    ].join(",");
+  });
+
+  const csv = [header.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", "anomaly_comparison.csv");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ─────────────────────────────────────────
 // 7. RUN AI CORRECTION  ← NEW
 // Detects anomalies + AI-corrects them +

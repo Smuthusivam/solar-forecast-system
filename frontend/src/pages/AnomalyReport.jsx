@@ -12,6 +12,7 @@ import {
   getAnomalies,
   runCorrection,
   getCorrectedCSVUrl,
+  downloadComparisonCSV,
   readAnomalyReportCache,
   writeAnomalyReportCache,
 } from "../services/api";
@@ -188,12 +189,20 @@ export default function AnomalyReport({ datasetId }) {
         </div>
         <div className="flex gap-3 flex-wrap">
           {correctionResult && (
-            <a
-              href={getCorrectedCSVUrl(correctionResult.session_id)}
-              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
-            >
-              Download Corrected CSV
-            </a>
+            <>
+              <a
+                href={getCorrectedCSVUrl(correctionResult.session_id)}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
+              >
+                Download Corrected CSV
+              </a>
+              <button
+                onClick={() => downloadComparisonCSV(correctionResult)}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+              >
+                Download Comparison CSV
+              </button>
+            </>
           )}
           <button
             onClick={handleRunCorrection}

@@ -118,13 +118,11 @@ class ForecastRun(Base):
     filename       = Column(String(255), nullable=False)
     horizon        = Column(Integer,     nullable=False)
     detection_mode = Column(String(16),  nullable=False)
-    weight_metric  = Column(String(8),   nullable=False, default="rmse")
-    xgb_weight     = Column(Float,       nullable=True)
-    lgbm_weight    = Column(Float,       nullable=True)
+    best_model     = Column(String(16),  nullable=True)
 
-    ensemble_rmse  = Column(Float,   nullable=False)
-    ensemble_mae   = Column(Float,   nullable=False)
-    ensemble_r2    = Column(Float,   nullable=False)
+    rmse           = Column(Float,   nullable=False)
+    mae            = Column(Float,   nullable=False)
+    r2             = Column(Float,   nullable=False)
 
     rows_processed = Column(Integer, nullable=False)
     anomaly_count  = Column(Integer, nullable=False, default=0)
@@ -135,7 +133,7 @@ class ForecastRun(Base):
         return (
             f"<ForecastRun id={self.run_id} "
             f"file={self.filename!r} horizon={self.horizon}h "
-            f"rmse={self.ensemble_rmse:.3f}>"
+            f"rmse={self.rmse:.3f}>"
         )
 
 

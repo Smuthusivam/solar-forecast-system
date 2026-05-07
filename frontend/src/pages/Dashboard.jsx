@@ -92,23 +92,23 @@ function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <StatCard
                 label="RMSE"
-                value={historyRun.ensemble_rmse.toFixed(2)}
+                value={historyRun.rmse.toFixed(2)}
                 unit="W/m²"
                 color="text-blue-600"
-                sub="saved ensemble metric"
+                sub={`saved metric · ${historyRun.best_model || "best model"}`}
               />
               <StatCard
                 label="MAE"
-                value={historyRun.ensemble_mae.toFixed(2)}
+                value={historyRun.mae.toFixed(2)}
                 unit="W/m²"
                 color="text-purple-600"
-                sub="saved ensemble metric"
+                sub={`saved metric · ${historyRun.best_model || "best model"}`}
               />
               <StatCard
                 label="R²"
-                value={historyRun.ensemble_r2.toFixed(4)}
-                color={historyRun.ensemble_r2 > 0.85 ? "text-green-600" : "text-orange-500"}
-                sub="saved ensemble metric"
+                value={historyRun.r2.toFixed(4)}
+                color={historyRun.r2 > 0.85 ? "text-green-600" : "text-orange-500"}
+                sub={`saved metric · ${historyRun.best_model || "best model"}`}
               />
             </div>
           </div>
@@ -134,7 +134,7 @@ function Dashboard() {
     );
   }
 
-  const em = forecast.ensemble_metrics;
+  const em = forecast.metrics;
   const points = forecast.forecast;
 
   // ── Forecast chart data (sampled) ──────────────────────────────────────
@@ -224,7 +224,7 @@ function Dashboard() {
       </div>
 
       <Card title="Predicted vs Actual"
-        subtitle="Ensemble forecast on the held-out test set with confidence intervals">
+        subtitle={`${forecast.best_model} forecast on the held-out test set with confidence intervals`}>
         <ResponsiveContainer width="100%" height={400}>
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -242,15 +242,16 @@ function Dashboard() {
         </ResponsiveContainer>
       </Card>
 
-      <Card title="Model Weight Distribution"
-        subtitle="Weights computed inversely from validation RMSE — lower error = higher weight">
+      <Card title="Model Comparison"
+        subtitle="XGBoost vs LightGBM on the held-out test set — best model used for forecasting">
         <div className="grid grid-cols-2 gap-4">
-          {forecast.per_model.map(m => (
-            <div key={m.model_name} className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-sm text-gray-500 mb-1">{m.model_name}</p>
-              <p className="text-3xl font-bold text-blue-600">
-                {(m.weight * 100).toFixed(1)}%
-              </p>
+          {(forecast.models_info || []).map(m => (
+            <div key={m.model_name}
+              className={`rounded-lg p-4 text-center ${m.is_best ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}>
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <p className="text-sm text-gray-500">{m.model_name}</p>
+                {m.is_best && <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">Best</span>}
+              </div>
               <div className="mt-2 text-xs text-gray-400 space-y-0.5">
                 <p>RMSE: {m.metrics.rmse.toFixed(2)}</p>
                 <p>R²: {m.metrics.r2.toFixed(4)}</p>

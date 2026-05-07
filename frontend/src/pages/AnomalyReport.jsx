@@ -551,7 +551,7 @@ export default function AnomalyReport({ datasetId }) {
           {/* ── Ensemble metric cards ── */}
           {mc && Object.keys(mc).length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Ensemble Metrics</h2>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Model Metrics</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {mc.rmse  && <MetricCard label="RMSE"  original={mc.rmse.original}  corrected={mc.rmse.corrected}  />}
                 {mc.mae   && <MetricCard label="MAE"   original={mc.mae.original}   corrected={mc.mae.corrected}   />}

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { uploadCSV, runForecast } from "../services/api";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, ReferenceLine
+  ResponsiveContainer, BarChart, Bar
 } from "recharts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -142,124 +142,24 @@ function Upload() {
     }
   }
 
-  // ── Run Forecast → go to Dashboard ──────────────
+  // ── Run Models → evaluate on test set, then go to Dashboard ──────────────
   async function handleRunForecast() {
     if (!result?.session_id) return;
     setRunning(true);
+    setError(null);
 
     try {
-      const forecastData = await runForecast(result.session_id, 24, trainSize);
+      const forecastData = await runForecast(result.session_id, 24, trainSize, true);
       setForecast(forecastData);
-      setActiveTab("data");
+      navigate("/dashboard", { state: { forecast: forecastData, result } });
     } catch (err) {
-      setError("Forecast failed. Please try again.");
-    } finally {
+      setError("Model run failed. Please try again.");
       setRunning(false);
     }
   }
 
   const points = forecast?.forecast ?? [];
   const uploadStats = result?.data_stats ?? null;
-
-  // ── Computed dataset stats ─────────────────────────────────────────────
-  const forecastStats = useMemo(() => {
-    if (!forecast || points.length === 0) return null;
-
-    const actuals = points.map(p => p.actual).filter(v => v != null);
-    const residuals = points
-      .filter(p => p.actual != null)
-      .map(p => p.actual - p.predicted);
-
-    const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const std = arr => {
-      if (!arr.length) return 0;
-      const m = mean(arr);
-      return Math.sqrt(mean(arr.map(v => (v - m) ** 2)));
-    };
-
-    const sortedActuals = [...actuals].sort((a, b) => a - b);
-    const median = sortedActuals.length
-      ? sortedActuals[Math.floor(sortedActuals.length / 2)]
-      : 0;
-
-    const testRatio = Math.max(0.01, 1 - trainSize / 100);
-    const trainRatio = 1 - testRatio;
-    const trainCount = Math.floor(points.length / testRatio * trainRatio);
-    const totalRows = trainCount + points.length;
-
-    const dataStats = result?.data_stats;
-    const meanActuals = mean(actuals);
-    const minActuals = actuals.length ? Math.min(...actuals) : 0;
-    const maxActuals = actuals.length ? Math.max(...actuals) : 0;
-
-    const residualMin = residuals.length ? Math.min(...residuals) : 0;
-    const residualMax = residuals.length ? Math.max(...residuals) : 0;
-
-    return {
-      totalPoints: points.length,
-      trainRows: trainCount,
-      testRows: points.length,
-      featureCount: forecast.feature_importance
-        ? Object.keys(forecast.feature_importance).length
-        : 22,
-      irradiance: {
-        mean: dataStats?.irradiance_mean ?? meanActuals,
-        median,
-        std: std(actuals),
-        min: dataStats?.irradiance_min ?? minActuals,
-        max: dataStats?.irradiance_max ?? maxActuals,
-      },
-      residuals: {
-        mean: mean(residuals),
-        std: std(residuals),
-        min: residualMin,
-        max: residualMax,
-      },
-      dateRange: {
-        start: points[0]?.timestamp,
-        end: points[points.length - 1]?.timestamp,
-      },
-      totalRows,
-    };
-  }, [forecast, points, result, trainSize]);
-
-  // ── Forecast chart data (sampled) ──────────────────────────────────────
-  const chartData = useMemo(() => {
-    if (!points.length) return [];
-    const step = Math.max(1, Math.floor(points.length / 200));
-    return points
-      .filter((_, i) => i % step === 0)
-      .map(p => ({
-        time: p.timestamp.substring(5, 16).replace("T", " "),
-        Predicted: parseFloat(p.predicted?.toFixed(1)),
-        Actual: p.actual != null ? parseFloat(p.actual?.toFixed(1)) : null,
-      }));
-  }, [points]);
-
-  // ── Residual histogram ─────────────────────────────────────────────────
-  const histogramData = useMemo(() => {
-    const residuals = points
-      .filter(p => p.actual != null)
-      .map(p => p.actual - p.predicted);
-
-    if (residuals.length === 0) return [];
-
-    const min = Math.min(...residuals);
-    const max = Math.max(...residuals);
-    const bins = 25;
-    const width = (max - min) / bins || 1;
-
-    const counts = Array(bins).fill(0);
-    residuals.forEach(r => {
-      const idx = Math.min(bins - 1, Math.floor((r - min) / width));
-      counts[idx]++;
-    });
-
-    return counts.map((count, i) => ({
-      bin: (min + i * width).toFixed(0),
-      count,
-    }));
-  }, [points]);
 
   // ── Upload-level pattern aggregates ───────────────────────────────────
   const hourlyAvg = useMemo(() => {
@@ -486,13 +386,13 @@ function Upload() {
               </p>
             </div>
 
-            {/* Run Forecast Button */}
+            {/* Run Models Button */}
             <button
               onClick={handleRunForecast}
               disabled={running}
               className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition"
             >
-              {running ? "Running Models..." : "Run Forecast"}
+              {running ? "Running Models..." : "Run Models"}
             </button>
 
           </div>
@@ -522,8 +422,7 @@ function Upload() {
                 { id: "data", label: "Overview" },
                 { id: "columns", label: "Columns" },
                 { id: "quality", label: "Data Quality" },
-                { id: "patterns", label: "Patterns" },
-                { id: "errors", label: "Error Analysis" }
+                { id: "patterns", label: "Patterns" }
               ].map(t => (
                 <button
                   key={t.id}
@@ -757,70 +656,6 @@ function Upload() {
               </>
             )}
 
-            {/* ── Error Analysis ─────────────────────────── */}
-            {activeTab === "errors" && (
-              <>
-                {!forecast && (
-                  <Card title="Error Analysis"
-                    subtitle="Run the forecast to compute model errors">
-                    <p className="text-sm text-gray-500">Error analysis requires model predictions. Click "Run Forecast" first.</p>
-                  </Card>
-                )}
-                {forecast && forecastStats && (
-                  <>
-                    <Card title="Residual Statistics"
-                      subtitle="Distribution of prediction errors (Actual − Predicted)">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <StatCard label="Mean Residual" value={forecastStats.residuals.mean.toFixed(2)}
-                          unit="W/m²"
-                          color={Math.abs(forecastStats.residuals.mean) < 5 ? "text-green-600" : "text-orange-500"}
-                          sub="ideal: near 0" />
-                        <StatCard label="Std Deviation" value={forecastStats.residuals.std.toFixed(2)}
-                          unit="W/m²" color="text-purple-600" sub="error spread" />
-                        <StatCard label="Min Error" value={forecastStats.residuals.min.toFixed(1)}
-                          unit="W/m²" color="text-gray-500" sub="largest under-pred" />
-                        <StatCard label="Max Error" value={forecastStats.residuals.max.toFixed(1)}
-                          unit="W/m²" color="text-gray-500" sub="largest over-pred" />
-                      </div>
-                    </Card>
-
-                    <Card title="Residual Histogram"
-                      subtitle="A bell shape centred on zero indicates a well-calibrated model">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={histogramData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                          <XAxis dataKey="bin" tick={{ fontSize: 10 }}
-                            label={{ value: "Residual (W/m²)", position: "insideBottom", offset: -5 }} />
-                          <YAxis tick={{ fontSize: 11 }} label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
-                          <Tooltip />
-                          <ReferenceLine x="0" stroke="#10b981" strokeDasharray="4 2" />
-                          <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </Card>
-
-                    <Card title="Residuals Over Time"
-                      subtitle="Look for patterns — random scatter is good, trends indicate model bias">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={chartData.map(d => ({
-                          time: d.time,
-                          Residual: d.Actual != null ? parseFloat((d.Actual - d.Predicted).toFixed(1)) : null,
-                        }))}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }}
-                            interval={Math.floor(chartData.length / 8)} />
-                          <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip />
-                          <ReferenceLine y={0} stroke="#10b981" strokeDasharray="4 2" />
-                          <Line type="monotone" dataKey="Residual"
-                            stroke="#ef4444" strokeWidth={1} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </Card>
-                  </>
-                )}
-              </>
-            )}
           </div>
         )}
 

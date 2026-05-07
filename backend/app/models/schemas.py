@@ -99,10 +99,10 @@ class UploadResponse(BaseModel):
 
 class ForecastRequest(BaseModel):
     # Body sent by the frontend to POST /api/forecast/run.
-    session_id: str
-    horizon:    int = Field(24, ge=1, le=8760, description="Forecast horizon in hours (1–8760)")
-    train_size: int = Field(80, ge=50, le=95,  description="Training data percentage (50–95)")
-    weight_metric: str = Field("rmse", description="Ensemble weighting metric: rmse or mae")
+    session_id:  str
+    horizon:     int  = Field(24, ge=1, le=8760, description="Forecast horizon in hours (1–8760)")
+    train_size:  int  = Field(80, ge=50, le=95,  description="Training data percentage (50–95)")
+    skip_future: bool = Field(False, description="Skip future forecast generation (model evaluation only)")
 
 
 class ModelMetrics(BaseModel):
@@ -116,19 +116,19 @@ class ModelMetrics(BaseModel):
 class ForecastPoint(BaseModel):
     # A single time-step in the forecast; actual is None for future predictions.
     timestamp: datetime
-    predicted: float           = Field(..., description="Ensemble prediction (W/m²)")
+    predicted: float           = Field(..., description="Predicted irradiance (W/m²)")
     actual:    Optional[float] = Field(None, description="Ground-truth value if available")
-    lower:     Optional[float] = Field(None, description="Lower confidence bound (Prophet)")
-    upper:     Optional[float] = Field(None, description="Upper confidence bound (Prophet)")
+    lower:     Optional[float] = Field(None, description="Lower confidence bound")
+    upper:     Optional[float] = Field(None, description="Upper confidence bound")
 
 
-class PerModelForecast(BaseModel):
-    # Raw predictions from one model — used in the Model Comparison page.
+class PerModelInfo(BaseModel):
+    # Metrics for one individual model — used in Model Comparison page.
     model_name:    str
     predictions:   list[float]
     metrics:       ModelMetrics
     train_metrics: Optional[ModelMetrics] = None
-    weight:        float = Field(..., ge=0.0, le=1.0, description="Ensemble weight for this model")
+    is_best:       bool = False
 
 
 class ForecastResponse(BaseModel):
@@ -137,10 +137,11 @@ class ForecastResponse(BaseModel):
     run_id:             int  = Field(..., description="DB primary key (used in /history)")
     horizon:            int  = Field(..., description="Forecast horizon in hours")
     detection_mode:     DetectionMode
+    best_model:         str  = Field(..., description="Name of the best model used for forecasting")
     forecast:           list[ForecastPoint]
     future_forecast:    list[ForecastPoint] = Field(default_factory=list, description="True future predictions beyond last known data point")
-    ensemble_metrics:   ModelMetrics
-    per_model:          list[PerModelForecast]
+    metrics:            ModelMetrics
+    models_info:        list[PerModelInfo] = Field(default_factory=list)
     feature_importance: Optional[dict[str, float]] = None
     created_at:         datetime = Field(default_factory=datetime.utcnow)
 
@@ -213,7 +214,7 @@ class CorrectionRunResponse(BaseModel):
     # metrics_comparison keys are metric names: "rmse", "mae", "r2", "mape"
     metrics_comparison:  dict[str, MetricsDelta] = Field(
         default_factory=dict,
-        description="Ensemble metric deltas — empty if pipeline was unavailable"
+        description="Metric deltas before/after correction — empty if pipeline was unavailable"
     )
     # model_comparison: { "original": { "xgboost": ModelMetrics, ... }, "corrected": { ... } }
     model_comparison:    dict[str, dict[str, ModelMetrics]] = Field(default_factory=dict)
@@ -240,9 +241,10 @@ class ForecastRunSummary(BaseModel):
     filename:       str
     horizon:        int
     detection_mode: DetectionMode
-    ensemble_rmse:  float
-    ensemble_mae:   float
-    ensemble_r2:    float
+    best_model:     Optional[str] = None
+    rmse:           float
+    mae:            float
+    r2:             float
     rows_processed: int
     anomaly_count:  int
     created_at:     datetime

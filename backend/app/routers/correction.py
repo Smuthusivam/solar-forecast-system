@@ -108,8 +108,8 @@ async def run_correction(dataset_id: str):
         )
 
         metrics_comparison = _metrics_delta(
-            results_original["ensemble_metrics"],
-            results_corrected["ensemble_metrics"],
+            results_original["metrics"],
+            results_corrected["metrics"],
         )
 
         forecasts = {
@@ -120,14 +120,14 @@ async def run_correction(dataset_id: str):
         }
 
         model_comparison = {
-            "original":  {m["model_name"]: m["metrics"] for m in results_original["per_model"]},
-            "corrected": {m["model_name"]: m["metrics"] for m in results_corrected["per_model"]},
+            "original":  {m["model_name"]: m["metrics"] for m in results_original["models_info"]},
+            "corrected": {m["model_name"]: m["metrics"] for m in results_corrected["models_info"]},
         }
 
         logger.info(
             "Pipeline comparison done | original RMSE=%.2f corrected RMSE=%.2f",
-            results_original["ensemble_metrics"]["rmse"],
-            results_corrected["ensemble_metrics"]["rmse"],
+            results_original["metrics"]["rmse"],
+            results_corrected["metrics"]["rmse"],
         )
 
     except Exception as e:

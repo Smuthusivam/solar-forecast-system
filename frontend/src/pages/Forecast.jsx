@@ -100,12 +100,12 @@ export default function Forecast() {
   })();
 
   // Per-model comparison on test set
-  const modelData = (result?.per_model || []).map(m => ({
-    model: m.model_name,
-    RMSE:  +m.metrics.rmse.toFixed(2),
-    MAE:   +m.metrics.mae.toFixed(2),
-    R2:    +m.metrics.r2.toFixed(4),
-    Weight: +(m.weight * 100).toFixed(1),
+  const modelData = (result?.models_info || []).map(m => ({
+    model:  m.model_name,
+    RMSE:   +m.metrics.rmse.toFixed(2),
+    MAE:    +m.metrics.mae.toFixed(2),
+    R2:     +m.metrics.r2.toFixed(4),
+    is_best: m.is_best,
   }));
 
   const tabs = [
@@ -234,13 +234,13 @@ export default function Forecast() {
 
           {/* Model accuracy on test set */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Ensemble RMSE" value={result.ensemble_metrics.rmse.toFixed(2)} unit="W/m²"
-              color="text-blue-600" sub="on held-out test set" />
-            <StatCard label="Ensemble MAE"  value={result.ensemble_metrics.mae.toFixed(2)}  unit="W/m²"
-              color="text-purple-600" sub="on held-out test set" />
-            <StatCard label="Ensemble R²"   value={result.ensemble_metrics.r2.toFixed(4)}
-              color={result.ensemble_metrics.r2 > 0.85 ? "text-green-600" : "text-orange-500"}
-              sub={result.ensemble_metrics.r2 > 0.85 ? "excellent fit" : "moderate fit"} />
+            <StatCard label="RMSE" value={result.metrics.rmse.toFixed(2)} unit="W/m²"
+              color="text-blue-600" sub={`${result.best_model} · test set`} />
+            <StatCard label="MAE"  value={result.metrics.mae.toFixed(2)}  unit="W/m²"
+              color="text-purple-600" sub={`${result.best_model} · test set`} />
+            <StatCard label="R²"   value={result.metrics.r2.toFixed(4)}
+              color={result.metrics.r2 > 0.85 ? "text-green-600" : "text-orange-500"}
+              sub={result.metrics.r2 > 0.85 ? "excellent fit" : "moderate fit"} />
             <StatCard label="Rows Used" value={result.rows_processed?.toLocaleString()}
               color="text-gray-700" sub="training data points" />
           </div>
@@ -381,12 +381,15 @@ export default function Forecast() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {modelData.map(m => (
-                  <div key={m.model} className="border border-gray-200 rounded-xl p-5 space-y-3">
+                  <div key={m.model}
+                    className={`rounded-xl p-5 space-y-3 ${m.is_best ? "border-2 border-blue-400 bg-blue-50" : "border border-gray-200"}`}>
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-gray-800">{m.model}</h4>
-                      <span className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                        Weight {m.Weight}%
-                      </span>
+                      {m.is_best && (
+                        <span className="text-sm font-bold text-white bg-blue-600 px-3 py-1 rounded-full">
+                          Best
+                        </span>
+                      )}
                     </div>
                     <div className="grid grid-cols-3 gap-3 text-center">
                       <div>
@@ -401,10 +404,6 @@ export default function Forecast() {
                         <div className={`text-lg font-bold ${m.R2 > 0.85 ? "text-green-600" : "text-orange-500"}`}>{m.R2}</div>
                         <div className="text-xs text-gray-400">R²</div>
                       </div>
-                    </div>
-                    <div className="bg-gray-100 rounded-full h-2">
-                      <div className="bg-blue-500 h-2 rounded-full transition-all"
-                        style={{ width: `${m.Weight}%` }} />
                     </div>
                   </div>
                 ))}

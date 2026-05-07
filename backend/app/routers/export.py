@@ -86,7 +86,7 @@ def export_pdf(session_id: str, horizon: int = 24):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-    em           = result["ensemble_metrics"]
+    em           = result["metrics"]
     pdf_filename = f"solar_forecast_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     try:
@@ -112,7 +112,7 @@ def export_pdf(session_id: str, horizon: int = 24):
         story.append(Paragraph(f"<b>Rows processed:</b> {result['rows_processed']}",                styles["Normal"]))
         story.append(Spacer(1, 12))
 
-        story.append(Paragraph("Ensemble Model Performance", styles["Heading2"]))
+        story.append(Paragraph(f"Model Performance ({result['best_model']})", styles["Heading2"]))
         metrics_data = [
             ["Metric", "Value"],
             ["RMSE",   f"{em['rmse']:.2f} W/m²"],
@@ -134,14 +134,14 @@ def export_pdf(session_id: str, horizon: int = 24):
         story.append(Spacer(1, 12))
 
         story.append(Paragraph("Individual Model Results", styles["Heading2"]))
-        model_data = [["Model", "RMSE", "MAE", "R²", "Weight"]]
-        for m in result["per_model"]:
+        model_data = [["Model", "RMSE", "MAE", "R²", "Best"]]
+        for mi in result["models_info"]:
             model_data.append([
-                m["model_name"],
-                f"{m['metrics']['rmse']:.2f}",
-                f"{m['metrics']['mae']:.2f}",
-                f"{m['metrics']['r2']:.4f}",
-                f"{m['weight']:.3f}",
+                mi["model_name"],
+                f"{mi['metrics']['rmse']:.2f}",
+                f"{mi['metrics']['mae']:.2f}",
+                f"{mi['metrics']['r2']:.4f}",
+                "Yes" if mi["is_best"] else "No",
             ])
         t2 = Table(model_data, colWidths=[120, 80, 80, 80, 80])
         t2.setStyle(TableStyle([
@@ -206,8 +206,9 @@ def export_pdf(session_id: str, horizon: int = 24):
             f"Generated : {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n"
             f"File      : {filename}\n"
             f"Horizon   : {horizon} hours\n"
-            f"Mode      : {result['detection_mode']}\n\n"
-            f"ENSEMBLE METRICS\n"
+            f"Mode      : {result['detection_mode']}\n"
+            f"Model     : {result['best_model']}\n\n"
+            f"MODEL METRICS\n"
             f"RMSE : {em['rmse']:.2f} W/m²\n"
             f"MAE  : {em['mae']:.2f} W/m²\n"
             f"R²   : {em['r2']:.4f}\n"

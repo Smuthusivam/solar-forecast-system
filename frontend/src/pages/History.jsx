@@ -64,10 +64,10 @@ function History() {
   // ── Summary stats ───────────────────────────────────────────────────
   const totalRuns   = runs.length;
   const avgR2       = runs.length
-    ? runs.reduce((a, r) => a + r.ensemble_r2, 0) / runs.length
+    ? runs.reduce((a, r) => a + r.r2, 0) / runs.length
     : 0;
   const bestRun     = runs.length
-    ? [...runs].sort((a, b) => b.ensemble_r2 - a.ensemble_r2)[0]
+    ? [...runs].sort((a, b) => b.r2 - a.r2)[0]
     : null;
   const totalRows   = runs.reduce((a, r) => a + r.rows_processed, 0);
 
@@ -117,7 +117,7 @@ function History() {
           <p className="text-xs text-gray-400 mt-1">forecast sessions</p>
         </div>
         <div className="bg-white rounded-xl shadow p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Avg Ensemble R²</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Avg R²</p>
           <p className={`text-2xl font-bold mt-1 ${avgR2 > 0.9 ? "text-green-600" : "text-orange-500"}`}>
             {avgR2.toFixed(4)}
           </p>
@@ -126,7 +126,7 @@ function History() {
         <div className="bg-white rounded-xl shadow p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Best Run</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">
-            {bestRun ? bestRun.ensemble_r2.toFixed(4) : "—"}
+            {bestRun ? bestRun.r2.toFixed(4) : "—"}
           </p>
           <p className="text-xs text-gray-400 mt-1">
             {bestRun ? bestRun.filename.slice(0, 20) : "no runs yet"}
@@ -189,16 +189,16 @@ function History() {
                     Horizon <SortIcon col="horizon" />
                   </th>
                   <th className="text-right p-3 cursor-pointer hover:text-blue-600"
-                    onClick={() => toggleSort("ensemble_rmse")}>
-                    RMSE <SortIcon col="ensemble_rmse" />
+                    onClick={() => toggleSort("rmse")}>
+                    RMSE <SortIcon col="rmse" />
                   </th>
                   <th className="text-right p-3 cursor-pointer hover:text-blue-600"
-                    onClick={() => toggleSort("ensemble_mae")}>
-                    MAE <SortIcon col="ensemble_mae" />
+                    onClick={() => toggleSort("mae")}>
+                    MAE <SortIcon col="mae" />
                   </th>
                   <th className="text-right p-3 cursor-pointer hover:text-blue-600"
-                    onClick={() => toggleSort("ensemble_r2")}>
-                    R² <SortIcon col="ensemble_r2" />
+                    onClick={() => toggleSort("r2")}>
+                    R² <SortIcon col="r2" />
                   </th>
                   <th className="text-right p-3 cursor-pointer hover:text-blue-600"
                     onClick={() => toggleSort("rows_processed")}>
@@ -238,10 +238,10 @@ function History() {
                         </span>
                       </td>
                       <td className="p-3 text-center text-gray-600">{run.horizon}h</td>
-                      <td className="p-3 text-right font-mono">{run.ensemble_rmse.toFixed(2)}</td>
-                      <td className="p-3 text-right font-mono">{run.ensemble_mae.toFixed(2)}</td>
+                      <td className="p-3 text-right font-mono">{run.rmse.toFixed(2)}</td>
+                      <td className="p-3 text-right font-mono">{run.mae.toFixed(2)}</td>
                       <td className="p-3 text-right">
-                        <R2Badge value={run.ensemble_r2} />
+                        <R2Badge value={run.r2} />
                       </td>
                       <td className="p-3 text-right text-gray-600">
                         {run.rows_processed.toLocaleString()}

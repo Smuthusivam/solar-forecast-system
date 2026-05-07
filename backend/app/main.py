@@ -59,7 +59,7 @@ app = FastAPI(
     description = (
         "ML-powered solar irradiance forecasting system. "
         "Accepts any weather/solar CSV, auto-detects columns via Claude AI, "
-        "runs XGBoost + LightGBM + Prophet ensemble, returns interactive results."
+        "trains XGBoost + LightGBM and selects the best model, returns interactive results."
     ),
     version  = "1.0.0",
     docs_url = "/docs",

@@ -99,7 +99,7 @@ async def run_correction(dataset_id: str):
 
     # Step 3 — Run ML pipeline on both versions in parallel
     try:
-        from app.services.pipeline import run_pipeline
+        from ml_core.pipeline import run_pipeline
 
         logger.info("Running original + corrected pipelines in parallel...")
         results_original, results_corrected = await asyncio.gather(

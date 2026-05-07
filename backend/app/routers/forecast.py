@@ -17,7 +17,7 @@ from app.models.schemas import (
     ForecastPoint,
 )
 from app.routers.upload import get_session
-from app.services.pipeline import run_pipeline
+from ml_core.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

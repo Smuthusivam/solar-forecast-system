@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
 } from "recharts";
 import { runForecast } from "../services/api";
+import { StatCard, TabNav } from "../components/ui";
 
 // ── Preset horizon options ────────────────────────────────────────────────────
 const PRESETS = [
@@ -17,19 +18,6 @@ const PRESETS = [
   { label: "1 week", value: 168, desc: "7 days"    },
   { label: "Custom", value: 0,   desc: "Set hours"  },
 ];
-
-function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color}`}>
-        {value}
-        {unit && <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>}
-      </p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  );
-}
 
 export default function Forecast() {
   const location = useLocation();
@@ -114,6 +102,7 @@ export default function Forecast() {
     { id: "models", label: "Models"         },
     { id: "table",  label: "Hourly Table"   },
   ];
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
@@ -245,18 +234,7 @@ export default function Forecast() {
               color="text-gray-700" sub="training data points" />
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-1 border-b border-gray-200">
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`px-4 py-2 text-sm font-medium transition border-b-2
-                  ${activeTab === t.id
-                    ? "text-blue-600 border-blue-600"
-                    : "text-gray-500 border-transparent hover:text-gray-800"}`}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <TabNav tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
           {/* ── Tab: Forecast Chart ── */}
           {activeTab === "chart" && (

@@ -15,68 +15,10 @@ import {
   readAnomalyReportCache,
   writeAnomalyReportCache,
 } from "../services/api";
-
-// ── Badges ──────────────────────────────────────────────────────────────────
-const SeverityBadge = ({ severity }) => {
-  const colors = {
-    high:   "bg-red-100 text-red-700 border border-red-300",
-    medium: "bg-yellow-100 text-yellow-700 border border-yellow-300",
-    low:    "bg-blue-100 text-blue-700 border border-blue-300",
-  };
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors[severity] || colors.low}`}>
-      {severity}
-    </span>
-  );
-};
-
-const ConfidenceBadge = ({ confidence }) => {
-  const colors = { high: "bg-green-100 text-green-700", medium: "bg-yellow-100 text-yellow-700", low: "bg-red-100 text-red-700" };
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[confidence] || ""}`}>{confidence} confidence</span>;
-};
-
-const SourceBadge = ({ source }) => {
-  const map = {
-    ai:                     { label: "🤖 AI",            cls: "bg-purple-100 text-purple-700" },
-    physics_rule:           { label: "⚡ Physics",        cls: "bg-cyan-100 text-cyan-700" },
-    interpolation_fallback: { label: "📐 Interpolation", cls: "bg-gray-100 text-gray-600" },
-  };
-  const { label, cls } = map[source] || { label: source, cls: "bg-gray-100 text-gray-600" };
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
-};
-
-// ── Section wrapper ──────────────────────────────────────────────────────────
-const Section = ({ title, subtitle, children }) => (
-  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-    <div className="px-5 py-4 border-b border-gray-100">
-      <h3 className="font-semibold text-gray-900 text-base">{title}</h3>
-      {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
-    </div>
-    <div className="p-5">{children}</div>
-  </div>
-);
-
-// ── Metric card ──────────────────────────────────────────────────────────────
-const MetricCard = ({ label, original, corrected, higherIsBetter = false }) => {
-  const isImproved = higherIsBetter ? corrected > original : corrected < original;
-  const pct = original !== 0 ? Math.abs((corrected - original) / original * 100) : 0;
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold text-gray-900">{corrected?.toFixed(3)}</span>
-        <span className="text-sm text-gray-400 line-through">{original?.toFixed(3)}</span>
-      </div>
-      <div className={`flex items-center gap-1 text-sm font-semibold ${isImproved ? "text-green-600" : "text-red-500"}`}>
-        <span>{isImproved ? "▼" : "▲"}</span>
-        <span>{pct.toFixed(2)}% {isImproved ? "improvement" : "degraded"}</span>
-      </div>
-    </div>
-  );
-};
-
-// ── Tooltip formatter ────────────────────────────────────────────────────────
-const fmtWm2 = (v) => v != null ? [`${Number(v).toFixed(2)} W/m²`] : ["—"];
+import {
+  Section, TabNav, MetricCard, AlertBox,
+  SeverityBadge, ConfidenceBadge, SourceBadge, fmtWm2,
+} from "../components/ui";
 
 // ── Main component ───────────────────────────────────────────────────────────
 export default function AnomalyReport({ datasetId }) {
@@ -264,9 +206,7 @@ export default function AnomalyReport({ datasetId }) {
       </div>
 
       {correctionError && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-          ⚠ Correction failed: {correctionError}
-        </div>
+        <AlertBox>⚠ Correction failed: {correctionError}</AlertBox>
       )}
 
       {/* Top stats */}

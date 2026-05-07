@@ -1,18 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getHistory } from "../services/api";
+import { R2Badge, AlertBox } from "../components/ui";
 
 const MODE_COLORS = {
   direct:    { bg: "bg-green-100",  text: "text-green-700"  },
   estimated: { bg: "bg-yellow-100", text: "text-yellow-700" },
 };
-
-function R2Badge({ value }) {
-  if (value > 0.95) return <span className="text-green-600 font-bold">{value.toFixed(4)}</span>;
-  if (value > 0.85) return <span className="text-blue-600 font-bold">{value.toFixed(4)}</span>;
-  if (value > 0)    return <span className="text-orange-500 font-bold">{value.toFixed(4)}</span>;
-  return <span className="text-red-500 font-bold">{value.toFixed(4)}</span>;
-}
 
 function History() {
   const navigate = useNavigate();
@@ -102,12 +96,7 @@ function History() {
         </button>
       </div>
 
-      {/* Error state */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-red-600">
-          {error}
-        </div>
-      )}
+      {error && <AlertBox>{error}</AlertBox>}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

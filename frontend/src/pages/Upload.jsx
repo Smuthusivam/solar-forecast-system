@@ -5,37 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
 } from "recharts";
-
-// ─────────────────────────────────────────────────────────────────────────
-// Reusable bits
-// ─────────────────────────────────────────────────────────────────────────
-function StatCard({ label, value, unit, color, sub }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color}`}>
-        {value}
-        {unit && <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>}
-      </p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  );
-}
-
-function Card({ title, subtitle, children, right }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-6 mb-6">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-700">{title}</h2>
-          {subtitle && <p className="text-sm text-gray-400">{subtitle}</p>}
-        </div>
-        {right}
-      </div>
-      <div className="mt-3">{children}</div>
-    </div>
-  );
-}
+import { StatCard, Card, TabNav } from "../components/ui";
 
 function Upload() {
   const navigate = useNavigate();
@@ -61,7 +31,10 @@ function Upload() {
       if (saved?.result) setResult(saved.result);
       if (saved?.forecast) setForecast(saved.forecast);
       if (typeof saved?.trainSize === "number") setTrainSize(saved.trainSize);
-      if (typeof saved?.activeTab === "string") setActiveTab(saved.activeTab);
+      if (typeof saved?.activeTab === "string") {
+        const allowedTabs = new Set(["data", "quality", "patterns"]);
+        setActiveTab(allowedTabs.has(saved.activeTab) ? saved.activeTab : "data");
+      }
       if (typeof saved?.fileName === "string") setFileName(saved.fileName);
     } catch {
       localStorage.removeItem(storageKey);
@@ -69,13 +42,7 @@ function Upload() {
   }, []);
 
   useEffect(() => {
-    const payload = {
-      result,
-      forecast,
-      trainSize,
-      activeTab,
-      fileName,
-    };
+    const payload = { result, forecast, trainSize, activeTab, fileName };
     localStorage.setItem(storageKey, JSON.stringify(payload));
   }, [result, forecast, trainSize, activeTab, fileName]);
 
@@ -271,7 +238,7 @@ function Upload() {
               disabled={uploading}
               className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
             >
-              {uploading ? "Uploading..." : "Upload & Detect Columns"}
+              {uploading ? "Uploading..." : "Upload"}
             </button>
           </div>
         )}
@@ -311,21 +278,6 @@ function Upload() {
                 }`}>
                 {result.mode === "direct" ? "Direct GHI" : "GHI Estimated"}
               </span>
-            </div>
-
-            {/* Detected columns */}
-            <div className="mb-4">
-              <p className="text-sm text-gray-500 mb-2">Detected Columns:</p>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(result.detected_columns || {}).map(([key, val]) => (
-                  <span
-                    key={key}
-                    className="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-medium"
-                  >
-                    {key}: <strong>{val}</strong>
-                  </span>
-                ))}
-              </div>
             </div>
 
             {/* Preview Table */}
@@ -416,34 +368,23 @@ function Upload() {
               )}
             </div>
 
-            {/* EDA Tabs */}
-            <div className="flex gap-1 mb-6 border-b border-gray-200">
-              {[
-                { id: "data", label: "Overview" },
-                { id: "columns", label: "Columns" },
-                { id: "quality", label: "Data Quality" },
-                { id: "patterns", label: "Patterns" }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  className={`px-4 py-2 text-sm font-medium transition border-b-2
-                    ${activeTab === t.id
-                      ? "text-blue-600 border-blue-600"
-                      : "text-gray-500 border-transparent hover:text-gray-800"
-                    }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <TabNav
+              tabs={[
+                { id: "data",     label: "Overview"     },
+                { id: "columns",  label: "Columns"      },
+                { id: "quality",  label: "Data Quality" },
+                { id: "patterns", label: "Patterns"     },
+              ]}
+              active={activeTab}
+              onChange={setActiveTab}
+            />
 
             {/* ── Overview ───────────────────────────── */}
             {activeTab === "data" && (
               <>
                 <Card title="Dataset Overview"
                   subtitle="Summary statistics of the raw upload and cleaned data">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <StatCard label="Rows (raw)"
                       value={uploadStats.rows_raw.toLocaleString()}
                       color="text-gray-700" sub="before cleaning" />
@@ -454,9 +395,6 @@ function Upload() {
                       value={uploadStats.pct_clean.toFixed(1)}
                       unit="%"
                       color="text-green-600" sub="rows kept" />
-                    <StatCard label="Columns Found"
-                      value={result.columns_found}
-                      color="text-purple-600" sub="raw file" />
                   </div>
                 </Card>
 
@@ -513,39 +451,6 @@ function Upload() {
                     Time series MUST NOT be shuffled. The model is trained on earlier data
                     and evaluated on the most recent slice to simulate real forecasting.
                   </p>
-                </Card>
-              </>
-            )}
-
-            {/* ── Columns ───────────────────────────── */}
-            {activeTab === "columns" && (
-              <>
-                <Card title="Detected Columns"
-                  subtitle="Mapped columns used for preprocessing">
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(result.detected_columns || {}).map(([key, val]) => (
-                      <span
-                        key={key}
-                        className="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-medium"
-                      >
-                        {key}: <strong>{val || "—"}</strong>
-                      </span>
-                    ))}
-                  </div>
-                </Card>
-
-                <Card title="All Available Columns"
-                  subtitle="Columns present after preprocessing">
-                  <div className="flex flex-wrap gap-2">
-                    {uploadStats.columns_available.map((col) => (
-                      <span
-                        key={col}
-                        className="bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full"
-                      >
-                        {col}
-                      </span>
-                    ))}
-                  </div>
                 </Card>
               </>
             )}

@@ -6,17 +6,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ReferenceLine
 } from "recharts";
-
-// ─── Reusable bits ─────────────────────────────────────────────────────
-function Card({ title, subtitle, children }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-6 mb-6">
-      <h2 className="text-lg font-semibold text-gray-700">{title}</h2>
-      {subtitle && <p className="text-sm text-gray-400 mb-4">{subtitle}</p>}
-      <div className="mt-3">{children}</div>
-    </div>
-  );
-}
+import { Card } from "../components/ui";
 
 const MODEL_COLORS = {
   XGBoost:  "#3b82f6",

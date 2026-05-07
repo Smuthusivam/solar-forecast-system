@@ -5,37 +5,7 @@ import {
   ResponsiveContainer, Area, ComposedChart
 } from "recharts";
 import { exportCSV, exportPDF } from "../services/api";
-
-// ─────────────────────────────────────────────────────────────────────────
-// Reusable bits
-// ─────────────────────────────────────────────────────────────────────────
-function StatCard({ label, value, unit, color, sub }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color}`}>
-        {value}
-        {unit && <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>}
-      </p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  );
-}
-
-function Card({ title, subtitle, children, right }) {
-  return (
-    <div className="bg-white rounded-xl shadow p-6 mb-6">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-700">{title}</h2>
-          {subtitle && <p className="text-sm text-gray-400">{subtitle}</p>}
-        </div>
-        {right}
-      </div>
-      <div className="mt-3">{children}</div>
-    </div>
-  );
-}
+import { StatCard, Card, AlertBox } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Main Dashboard
@@ -113,9 +83,9 @@ function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          <AlertBox variant="warning">
             This view shows saved summary metrics from history. Full forecast charts are not stored in the database, so rerun the forecast from upload to see detailed plots.
-          </div>
+          </AlertBox>
         </div>
       </div>
     );

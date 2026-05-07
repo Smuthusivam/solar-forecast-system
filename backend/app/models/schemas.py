@@ -75,6 +75,10 @@ class DataStats(BaseModel):
     date_start:        str
     date_end:          str
     detection_mode:    Optional[str] = None
+    hourly_avg:        list[float] = Field(default_factory=list, description="Avg irradiance by hour (0-23)")
+    weekday_avg:       list[float] = Field(default_factory=list, description="Avg irradiance by weekday (Sun-Sat)")
+    monthly_avg:       list[float] = Field(default_factory=list, description="Avg irradiance by month (Jan-Dec)")
+    daily_avg:         list[dict]  = Field(default_factory=list, description="Daily avg irradiance: [{date, avg}]")
 
 
 class UploadResponse(BaseModel):

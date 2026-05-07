@@ -431,6 +431,36 @@ def preprocess(
     # Step 10: build a summary for the API response
     date_range_days = (df.index[-1] - df.index[0]).days + 1
     irr             = df["irradiance"]
+    hourly_avg = (
+        irr.groupby(df.index.hour)
+        .mean()
+        .reindex(range(24), fill_value=0.0)
+        .round(2)
+        .tolist()
+    )
+    weekday_avg = (
+        irr.groupby(df.index.dayofweek)
+        .mean()
+        .reindex(range(7), fill_value=0.0)
+        .round(2)
+        .tolist()
+    )
+    monthly_avg = (
+        irr.groupby(df.index.month)
+        .mean()
+        .reindex(range(1, 13), fill_value=0.0)
+        .round(2)
+        .tolist()
+    )
+    daily_avg_df = irr.resample("D").mean().round(2).reset_index()
+    date_col = "timestamp" if "timestamp" in daily_avg_df.columns else daily_avg_df.columns[0]
+    daily_avg = [
+        {
+            "date": str(row[date_col])[:10],
+            "avg": float(row["irradiance"]),
+        }
+        for _, row in daily_avg_df.iterrows()
+    ]
 
     meta: dict[str, Any] = {
         "rows_raw":          rows_raw,
@@ -444,6 +474,10 @@ def preprocess(
         "date_start":        str(df.index[0]),
         "date_end":          str(df.index[-1]),
         "detection_mode":    detection_mode,
+        "hourly_avg":         hourly_avg,
+        "weekday_avg":        weekday_avg,
+        "monthly_avg":        monthly_avg,
+        "daily_avg":          daily_avg,
     }
 
     logger.info(

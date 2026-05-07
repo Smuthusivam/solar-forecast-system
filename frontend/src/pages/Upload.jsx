@@ -37,20 +37,6 @@ function Card({ title, subtitle, children, right }) {
   );
 }
 
-const HEATMAP_COLORS = [
-  "#f8fafc", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa",
-  "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"
-];
-
-function getHeatColor(value, max) {
-  if (max === 0) return HEATMAP_COLORS[0];
-  const idx = Math.min(
-    HEATMAP_COLORS.length - 1,
-    Math.floor((value / max) * HEATMAP_COLORS.length)
-  );
-  return HEATMAP_COLORS[idx];
-}
-
 function Upload() {
   const navigate = useNavigate();
   const storageKey = "solar-forecast-upload-state";
@@ -173,9 +159,10 @@ function Upload() {
   }
 
   const points = forecast?.forecast ?? [];
+  const uploadStats = result?.data_stats ?? null;
 
   // ── Computed dataset stats ─────────────────────────────────────────────
-  const stats = useMemo(() => {
+  const forecastStats = useMemo(() => {
     if (!forecast || points.length === 0) return null;
 
     const actuals = points.map(p => p.actual).filter(v => v != null);
@@ -274,49 +261,43 @@ function Upload() {
     }));
   }, [points]);
 
-  // ── Hourly average irradiance ──────────────────────────────────────────
+  // ── Upload-level pattern aggregates ───────────────────────────────────
   const hourlyAvg = useMemo(() => {
-    const buckets = Array.from({ length: 24 }, () => ({ sum: 0, count: 0 }));
-    points.forEach(p => {
-      if (p.actual == null) return;
-      const h = new Date(p.timestamp).getHours();
-      buckets[h].sum += p.actual;
-      buckets[h].count += 1;
-    });
-    return buckets.map((b, h) => ({
+    if (!uploadStats?.hourly_avg?.length) return [];
+    return uploadStats.hourly_avg.map((avg, h) => ({
       hour: `${h}:00`,
-      avg: b.count ? parseFloat((b.sum / b.count).toFixed(1)) : 0,
+      avg: parseFloat(Number(avg || 0).toFixed(1)),
     }));
-  }, [points]);
+  }, [uploadStats]);
 
-  // ── Hour × Day heatmap ─────────────────────────────────────────────────
-  const heatmap = useMemo(() => {
-    const grid = Array.from({ length: 7 }, () =>
-      Array.from({ length: 24 }, () => ({ sum: 0, count: 0 }))
-    );
+  const weekdayAvg = useMemo(() => {
+    if (!uploadStats?.weekday_avg?.length) return [];
+    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return uploadStats.weekday_avg.map((avg, i) => ({
+      day: labels[i],
+      avg: parseFloat(Number(avg || 0).toFixed(1)),
+    }));
+  }, [uploadStats]);
 
-    points.forEach(p => {
-      if (p.actual == null) return;
-      const d = new Date(p.timestamp);
-      const day = d.getDay();
-      const hour = d.getHours();
-      grid[day][hour].sum += p.actual;
-      grid[day][hour].count += 1;
-    });
+  const monthlyAvg = useMemo(() => {
+    if (!uploadStats?.monthly_avg?.length) return [];
+    const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return uploadStats.monthly_avg.map((avg, i) => ({
+      month: labels[i],
+      avg: parseFloat(Number(avg || 0).toFixed(1)),
+    }));
+  }, [uploadStats]);
 
-    let max = 0;
-    const data = grid.map(row =>
-      row.map(cell => {
-        const avg = cell.count ? cell.sum / cell.count : 0;
-        if (avg > max) max = avg;
-        return avg;
-      })
-    );
-
-    return { data, max };
-  }, [points]);
-
-  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dailyAvg = useMemo(() => {
+    if (!uploadStats?.daily_avg?.length) return [];
+    const rows = uploadStats.daily_avg.map((row) => ({
+      day: row.date,
+      avg: parseFloat(Number(row.avg || 0).toFixed(1)),
+    }));
+    if (rows.length <= 120) return rows;
+    const step = Math.ceil(rows.length / 120);
+    return rows.filter((_, i) => i % step === 0);
+  }, [uploadStats]);
 
   // ── UI ───────────────────────────────────────────
   return (
@@ -518,25 +499,29 @@ function Upload() {
         )}
 
         {/* EDA Section */}
-        {forecast && stats && (
+        {result && uploadStats && (
           <div className="w-full">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
               <div>
                 <h2 className="text-xl font-semibold text-gray-800">Data Overview & EDA</h2>
-                <p className="text-sm text-gray-400">Review dataset stats, patterns, and errors before the forecast view</p>
+                <p className="text-sm text-gray-400">Review dataset stats and quality right after upload</p>
               </div>
-              <button
-                onClick={() => navigate("/dashboard", { state: { forecast, result } })}
-                className="self-start rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-              >
-                Open Forecast Dashboard
-              </button>
+              {forecast && (
+                <button
+                  onClick={() => navigate("/dashboard", { state: { forecast, result } })}
+                  className="self-start rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                >
+                  Open Forecast Dashboard
+                </button>
+              )}
             </div>
 
             {/* EDA Tabs */}
             <div className="flex gap-1 mb-6 border-b border-gray-200">
               {[
-                { id: "data", label: "Data Overview" },
+                { id: "data", label: "Overview" },
+                { id: "columns", label: "Columns" },
+                { id: "quality", label: "Data Quality" },
                 { id: "patterns", label: "Patterns" },
                 { id: "errors", label: "Error Analysis" }
               ].map(t => (
@@ -554,38 +539,75 @@ function Upload() {
               ))}
             </div>
 
-            {/* ── Data Overview ───────────────────────────── */}
+            {/* ── Overview ───────────────────────────── */}
             {activeTab === "data" && (
               <>
                 <Card title="Dataset Overview"
-                  subtitle="Summary statistics of the input data and ML pipeline">
+                  subtitle="Summary statistics of the raw upload and cleaned data">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard label="Total Rows"
-                      value={(stats.totalRows).toLocaleString()}
-                      color="text-gray-700" sub="raw data points" />
-                    <StatCard label="Features Engineered"
-                      value={stats.featureCount}
-                      color="text-blue-600" sub="time + lag + weather" />
-                    <StatCard label="Date Range"
-                      value={`${Math.round((new Date(stats.dateRange.end) - new Date(stats.dateRange.start)) / (1000*60*60*24))}`}
-                      unit="days"
-                      color="text-purple-600" sub="span of test data" />
-                    <StatCard label="Detection Mode"
-                      value={forecast.detection_mode}
-                      color="text-green-600" sub="GHI source" />
+                    <StatCard label="Rows (raw)"
+                      value={uploadStats.rows_raw.toLocaleString()}
+                      color="text-gray-700" sub="before cleaning" />
+                    <StatCard label="Rows (clean)"
+                      value={uploadStats.rows_clean.toLocaleString()}
+                      color="text-blue-600" sub="after cleaning" />
+                    <StatCard label="Clean %"
+                      value={uploadStats.pct_clean.toFixed(1)}
+                      unit="%"
+                      color="text-green-600" sub="rows kept" />
+                    <StatCard label="Columns Found"
+                      value={result.columns_found}
+                      color="text-purple-600" sub="raw file" />
                   </div>
                 </Card>
 
-                <Card title="Train / Test Split"
+                <Card title="Date Range"
+                  subtitle="The full span of the uploaded dataset">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-xs text-gray-500 mb-1">Start</p>
+                      <p className="text-lg font-mono text-gray-700">
+                        {uploadStats.date_start?.substring(0, 19).replace("T", " ")}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-xs text-gray-500 mb-1">End</p>
+                      <p className="text-lg font-mono text-gray-700">
+                        {uploadStats.date_end?.substring(0, 19).replace("T", " ")}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Span: {uploadStats.date_range_days} days
+                  </p>
+                </Card>
+
+                <Card title="Irradiance Summary"
+                  subtitle="Basic stats on the target variable">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <StatCard label="Mean" value={uploadStats.irradiance_mean.toFixed(1)} unit="W/m²" color="text-blue-600" />
+                    <StatCard label="Min" value={uploadStats.irradiance_min.toFixed(1)} unit="W/m²" color="text-gray-500" />
+                    <StatCard label="Max" value={uploadStats.irradiance_max.toFixed(1)} unit="W/m²" color="text-orange-600" />
+                    <StatCard label="Detection"
+                      value={result.detection_mode}
+                      color="text-green-600" sub="GHI source" />
+                    <StatCard label="Confidence"
+                      value={(result.confidence * 100).toFixed(0)}
+                      unit="%"
+                      color="text-indigo-600" sub="column mapping" />
+                  </div>
+                </Card>
+
+                <Card title="Planned Train / Test Split"
                   subtitle={`Time-aware ${trainSize}/${100 - trainSize} split — no shuffling to preserve temporal order`}>
                   <div className="flex items-stretch h-12 rounded-lg overflow-hidden mb-3">
                     <div className="bg-blue-500 flex items-center justify-center text-white font-medium"
                       style={{ width: `${trainSize}%` }}>
-                      Train: {stats.trainRows.toLocaleString()} rows ({trainSize}%)
+                      Train: {Math.round(uploadStats.rows_clean * (trainSize / 100)).toLocaleString()} rows ({trainSize}%)
                     </div>
                     <div className="bg-orange-500 flex items-center justify-center text-white font-medium"
                       style={{ width: `${100 - trainSize}%` }}>
-                      Test: {stats.testRows.toLocaleString()} ({100 - trainSize}%)
+                      Test: {Math.round(uploadStats.rows_clean * ((100 - trainSize) / 100)).toLocaleString()} ({100 - trainSize}%)
                     </div>
                   </div>
                   <p className="text-xs text-gray-400">
@@ -593,150 +615,210 @@ function Upload() {
                     and evaluated on the most recent slice to simulate real forecasting.
                   </p>
                 </Card>
+              </>
+            )}
 
-                <Card title="Irradiance Statistics"
-                  subtitle="Distribution and range of the target variable">
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <StatCard label="Mean" value={stats.irradiance.mean.toFixed(1)} unit="W/m²" color="text-blue-600" />
-                    <StatCard label="Median" value={stats.irradiance.median.toFixed(1)} unit="W/m²" color="text-indigo-600" />
-                    <StatCard label="Std Dev" value={stats.irradiance.std.toFixed(1)} unit="W/m²" color="text-purple-600" />
-                    <StatCard label="Min" value={stats.irradiance.min.toFixed(1)} unit="W/m²" color="text-gray-500" />
-                    <StatCard label="Max" value={stats.irradiance.max.toFixed(1)} unit="W/m²" color="text-orange-600" />
+            {/* ── Columns ───────────────────────────── */}
+            {activeTab === "columns" && (
+              <>
+                <Card title="Detected Columns"
+                  subtitle="Mapped columns used for preprocessing">
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(result.detected_columns || {}).map(([key, val]) => (
+                      <span
+                        key={key}
+                        className="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-medium"
+                      >
+                        {key}: <strong>{val || "—"}</strong>
+                      </span>
+                    ))}
                   </div>
                 </Card>
 
-                <Card title="Test Period Coverage"
-                  subtitle="The exact time window evaluated by the models">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-xs text-gray-500 mb-1">Start</p>
-                      <p className="text-lg font-mono text-gray-700">
-                        {stats.dateRange.start?.substring(0, 19).replace("T", " ")}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-xs text-gray-500 mb-1">End</p>
-                      <p className="text-lg font-mono text-gray-700">
-                        {stats.dateRange.end?.substring(0, 19).replace("T", " ")}
-                      </p>
-                    </div>
+                <Card title="All Available Columns"
+                  subtitle="Columns present after preprocessing">
+                  <div className="flex flex-wrap gap-2">
+                    {uploadStats.columns_available.map((col) => (
+                      <span
+                        key={col}
+                        className="bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full"
+                      >
+                        {col}
+                      </span>
+                    ))}
                   </div>
                 </Card>
+              </>
+            )}
+
+            {/* ── Data Quality ───────────────────────── */}
+            {activeTab === "quality" && (
+              <>
+                <Card title="Cleaning Summary"
+                  subtitle="What changed during preprocessing">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatCard label="Rows Dropped"
+                      value={(uploadStats.rows_raw - uploadStats.rows_clean).toLocaleString()}
+                      color="text-orange-600" sub="invalid timestamps / gaps" />
+                    <StatCard label="Clean %"
+                      value={uploadStats.pct_clean.toFixed(1)}
+                      unit="%"
+                      color="text-green-600" sub="rows kept" />
+                    <StatCard label="Detection Mode"
+                      value={result.detection_mode}
+                      color="text-indigo-600" sub="direct or estimated" />
+                    <StatCard label="Warnings"
+                      value={result.warnings?.length || 0}
+                      color="text-gray-600" sub="non-fatal" />
+                  </div>
+                </Card>
+
+                {result.warnings?.length > 0 && (
+                  <Card title="Warnings"
+                    subtitle="Issues found during column detection">
+                    <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
+                      {result.warnings.map((warn, idx) => (
+                        <li key={idx}>{warn}</li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
               </>
             )}
 
             {/* ── Patterns ───────────────────────────────── */}
             {activeTab === "patterns" && (
               <>
-                <Card title="Average Irradiance by Hour of Day"
-                  subtitle="Solar bell curve — peak at noon, zero at night">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={hourlyAvg}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 11 }}
-                        label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
-                      <Tooltip />
-                      <Bar dataKey="avg" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
+                {!uploadStats && (
+                  <Card title="Patterns"
+                    subtitle="Upload a dataset to compute time-based patterns">
+                    <p className="text-sm text-gray-500">Patterns are computed during preprocessing. Upload a CSV first.</p>
+                  </Card>
+                )}
+                {uploadStats && (
+                  <>
+                    <Card title="Average Irradiance by Hour of Day"
+                      subtitle="Solar bell curve — peak at noon, zero at night">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={hourlyAvg}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 11 }}
+                            label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
+                          <Tooltip />
+                          <Bar dataKey="avg" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
 
-                <Card title="Day of Week × Hour Heatmap"
-                  subtitle="Average irradiance pattern — darker = higher irradiance">
-                  <div className="overflow-x-auto">
-                    <table className="text-xs">
-                      <thead>
-                        <tr>
-                          <th className="p-1"></th>
-                          {Array.from({ length: 24 }).map((_, h) => (
-                            <th key={h} className="p-1 text-gray-400 font-normal w-7">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {heatmap.data.map((row, d) => (
-                          <tr key={d}>
-                            <td className="p-1 text-gray-500 font-medium pr-2">{dayLabels[d]}</td>
-                            {row.map((val, h) => (
-                              <td key={h}
-                                title={`${dayLabels[d]} ${h}:00 — ${val.toFixed(0)} W/m²`}
-                                className="p-0">
-                                <div
-                                  className="w-7 h-7 rounded"
-                                  style={{ backgroundColor: getHeatColor(val, heatmap.max) }}
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="flex items-center gap-2 mt-3 text-xs text-gray-400">
-                      <span>Low</span>
-                      {HEATMAP_COLORS.map((c, i) => (
-                        <div key={i} className="w-5 h-3 rounded"
-                          style={{ backgroundColor: c }} />
-                      ))}
-                      <span>High ({heatmap.max.toFixed(0)} W/m²)</span>
-                    </div>
-                  </div>
-                </Card>
+                    <Card title="Average Irradiance by Day of Week"
+                      subtitle="Weekday pattern — highlights operational differences">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={weekdayAvg}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="day" />
+                          <YAxis tick={{ fontSize: 11 }}
+                            label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
+                          <Tooltip />
+                          <Bar dataKey="avg" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
+
+                    <Card title="Monthly Average Irradiance"
+                      subtitle="Seasonality view across months">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={monthlyAvg}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="month" />
+                          <YAxis tick={{ fontSize: 11 }}
+                            label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
+                          <Tooltip />
+                          <Bar dataKey="avg" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
+
+                    <Card title="Daily Average Trend"
+                      subtitle="Smoothed daily averages (sampled)">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <LineChart data={dailyAvg}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="day" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 11 }}
+                            label={{ value: "W/m²", angle: -90, position: "insideLeft" }} />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="avg" stroke="#f97316" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </Card>
+                  </>
+                )}
               </>
             )}
 
             {/* ── Error Analysis ─────────────────────────── */}
             {activeTab === "errors" && (
               <>
-                <Card title="Residual Statistics"
-                  subtitle="Distribution of prediction errors (Actual − Predicted)">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard label="Mean Residual" value={stats.residuals.mean.toFixed(2)}
-                      unit="W/m²"
-                      color={Math.abs(stats.residuals.mean) < 5 ? "text-green-600" : "text-orange-500"}
-                      sub="ideal: near 0" />
-                    <StatCard label="Std Deviation" value={stats.residuals.std.toFixed(2)}
-                      unit="W/m²" color="text-purple-600" sub="error spread" />
-                    <StatCard label="Min Error" value={stats.residuals.min.toFixed(1)}
-                      unit="W/m²" color="text-gray-500" sub="largest under-pred" />
-                    <StatCard label="Max Error" value={stats.residuals.max.toFixed(1)}
-                      unit="W/m²" color="text-gray-500" sub="largest over-pred" />
-                  </div>
-                </Card>
+                {!forecast && (
+                  <Card title="Error Analysis"
+                    subtitle="Run the forecast to compute model errors">
+                    <p className="text-sm text-gray-500">Error analysis requires model predictions. Click "Run Forecast" first.</p>
+                  </Card>
+                )}
+                {forecast && forecastStats && (
+                  <>
+                    <Card title="Residual Statistics"
+                      subtitle="Distribution of prediction errors (Actual − Predicted)">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <StatCard label="Mean Residual" value={forecastStats.residuals.mean.toFixed(2)}
+                          unit="W/m²"
+                          color={Math.abs(forecastStats.residuals.mean) < 5 ? "text-green-600" : "text-orange-500"}
+                          sub="ideal: near 0" />
+                        <StatCard label="Std Deviation" value={forecastStats.residuals.std.toFixed(2)}
+                          unit="W/m²" color="text-purple-600" sub="error spread" />
+                        <StatCard label="Min Error" value={forecastStats.residuals.min.toFixed(1)}
+                          unit="W/m²" color="text-gray-500" sub="largest under-pred" />
+                        <StatCard label="Max Error" value={forecastStats.residuals.max.toFixed(1)}
+                          unit="W/m²" color="text-gray-500" sub="largest over-pred" />
+                      </div>
+                    </Card>
 
-                <Card title="Residual Histogram"
-                  subtitle="A bell shape centred on zero indicates a well-calibrated model">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={histogramData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="bin" tick={{ fontSize: 10 }}
-                        label={{ value: "Residual (W/m²)", position: "insideBottom", offset: -5 }} />
-                      <YAxis tick={{ fontSize: 11 }} label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
-                      <Tooltip />
-                      <ReferenceLine x="0" stroke="#10b981" strokeDasharray="4 2" />
-                      <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
+                    <Card title="Residual Histogram"
+                      subtitle="A bell shape centred on zero indicates a well-calibrated model">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={histogramData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="bin" tick={{ fontSize: 10 }}
+                            label={{ value: "Residual (W/m²)", position: "insideBottom", offset: -5 }} />
+                          <YAxis tick={{ fontSize: 11 }} label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
+                          <Tooltip />
+                          <ReferenceLine x="0" stroke="#10b981" strokeDasharray="4 2" />
+                          <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
 
-                <Card title="Residuals Over Time"
-                  subtitle="Look for patterns — random scatter is good, trends indicate model bias">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={chartData.map(d => ({
-                      time: d.time,
-                      Residual: d.Actual != null ? parseFloat((d.Actual - d.Predicted).toFixed(1)) : null,
-                    }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="time" tick={{ fontSize: 10 }}
-                        interval={Math.floor(chartData.length / 8)} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <ReferenceLine y={0} stroke="#10b981" strokeDasharray="4 2" />
-                      <Line type="monotone" dataKey="Residual"
-                        stroke="#ef4444" strokeWidth={1} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Card>
+                    <Card title="Residuals Over Time"
+                      subtitle="Look for patterns — random scatter is good, trends indicate model bias">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={chartData.map(d => ({
+                          time: d.time,
+                          Residual: d.Actual != null ? parseFloat((d.Actual - d.Predicted).toFixed(1)) : null,
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }}
+                            interval={Math.floor(chartData.length / 8)} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <ReferenceLine y={0} stroke="#10b981" strokeDasharray="4 2" />
+                          <Line type="monotone" dataKey="Residual"
+                            stroke="#ef4444" strokeWidth={1} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </Card>
+                  </>
+                )}
               </>
             )}
           </div>

@@ -29,10 +29,10 @@ GHI_MAX = 1200.0
 NIGHT_HOURS = set(range(0, 5)) | set(range(21, 24))
 
 # Anomalies per Claude call — smaller batches = more accurate JSON from Claude
-BATCH_SIZE = 20
+BATCH_SIZE = 10
 
 # Max simultaneous Claude API calls — avoids rate-limit 429s
-MAX_CONCURRENT = 10
+MAX_CONCURRENT = 15
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -259,9 +259,12 @@ async def _correct_all_async(
     ]
     context_cols = [irradiance_col] + weather_context_cols
 
+    # Pre-build O(1) timestamp → integer position map — avoids O(n) scan per anomaly
+    ts_to_pos = {ts: pos for pos, ts in enumerate(df.index)}
+
     correction_log: List[Dict] = []
-    ai_batch: List[Dict] = []        # anomalies queued for Claude
-    ai_batch_meta: List[Dict] = []   # matching row indices + raw anomaly data
+    ai_batch: List[Dict] = []
+    ai_batch_meta: List[Dict] = []
 
     dismissed = 0
 
@@ -271,13 +274,12 @@ async def _correct_all_async(
         method    = anomaly.get("method", "unknown")
         severity  = anomaly.get("severity", "medium")
 
-        # Locate row
-        ts_parsed  = pd.Timestamp(ts)
-        ts_matches = df.index[df.index == ts_parsed].tolist()
-        if not ts_matches:
+        # O(1) row lookup
+        ts_parsed = pd.Timestamp(ts)
+        i = ts_to_pos.get(ts_parsed)
+        if i is None:
             logger.warning("Timestamp %s not found — skipping", ts)
             continue
-        i = df.index.get_loc(ts_matches[0])
 
         # ── 1. Nighttime physics rule ─────────────────────────────────────
         if _is_nighttime(ts):

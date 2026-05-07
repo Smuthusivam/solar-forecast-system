@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import hashlib
+import json
 import logging
 import os
 import uuid
@@ -10,8 +12,10 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
+from app.database import get_db, save_dataset
 from app.models.schemas import DetectedColumns, DetectionMode, UploadResponse
 from app.services.ai_detector import detect_columns
 from app.services.preprocessing import preprocess
@@ -80,7 +84,7 @@ def _purge_expired_sessions() -> None:
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     if not file.filename.endswith(".csv"):
         raise HTTPException(
@@ -162,6 +166,7 @@ async def upload_csv(file: UploadFile = File(...)):
     _purge_expired_sessions()
     session_id = str(uuid.uuid4())
     filepath   = _save_upload(session_id, file.filename, file_bytes)
+    file_hash  = hashlib.sha256(file_bytes).hexdigest()
 
     _sessions[session_id] = {
         "df":             df,
@@ -169,9 +174,26 @@ async def upload_csv(file: UploadFile = File(...)):
         "detection_mode": detection["detection_mode"],
         "filename":       file.filename,
         "filepath":       filepath,
+        "file_hash":      file_hash,
         "meta":           meta,
         "expires_at":     datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS),
     }
+
+    try:
+        dataset = save_dataset(
+            db,
+            session_id     = session_id,
+            filename       = file.filename,
+            file_path      = filepath,
+            file_size      = len(file_bytes),
+            file_hash      = file_hash,
+            row_count      = meta["rows_clean"],
+            column_map     = json.dumps(detection["detected"]),
+            detection_mode = detection["detection_mode"],
+        )
+        _sessions[session_id]["dataset_id"] = dataset.dataset_id
+    except Exception as exc:
+        logger.warning("Failed to persist dataset metadata for %s: %s", session_id, exc)
 
     try:
         from app.routers.correction import register_upload_session

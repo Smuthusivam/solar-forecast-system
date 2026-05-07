@@ -76,6 +76,27 @@ def _blend(xgb: np.ndarray, lgbm: np.ndarray, xgb_w: float, lgbm_w: float) -> np
     return np.clip(xgb * xgb_w + lgbm * lgbm_w, 0, None)
 
 
+def _compute_diff_weights(xgb_metrics: dict, lgbm_metrics: dict, metric: str) -> tuple[float, float]:
+    metric = metric.lower().strip()
+    if metric not in {"rmse", "mae"}:
+        raise ValueError("weight_metric must be 'rmse' or 'mae'")
+
+    xgb_err  = float(xgb_metrics[metric])
+    lgbm_err = float(lgbm_metrics[metric])
+    max_err  = max(xgb_err, lgbm_err)
+
+    xgb_score  = max_err - xgb_err
+    lgbm_score = max_err - lgbm_err
+    total      = xgb_score + lgbm_score
+
+    if total <= 0:
+        return 0.5, 0.5
+
+    xgb_w  = round(xgb_score  / total, 4)
+    lgbm_w = round(lgbm_score / total, 4)
+    return xgb_w, lgbm_w
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Future forecast generation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,6 +171,7 @@ def run_pipeline(
     horizon:        int = 24,
     detection_mode: str = "direct",
     train_size:     int = 80,
+    weight_metric:  str = "rmse",
 ) -> dict[str, Any]:
     """
     Train XGBoost + LightGBM on historical data, evaluate on held-out test set,
@@ -170,13 +192,9 @@ def run_pipeline(
     xgb_preds,  xgb_metrics  = _test_model(xgb_model,  test_feat, "XGBoost")
     lgbm_preds, lgbm_metrics = _test_model(lgbm_model, test_feat, "LightGBM")
 
-    # Weight models inversely by RMSE
-    xgb_inv  = 1.0 / max(xgb_metrics["rmse"],  1e-6)
-    lgbm_inv = 1.0 / max(lgbm_metrics["rmse"], 1e-6)
-    total    = xgb_inv + lgbm_inv
-    xgb_w    = round(xgb_inv  / total, 4)
-    lgbm_w   = round(lgbm_inv / total, 4)
-    logger.info("Weights | XGBoost=%.3f  LightGBM=%.3f", xgb_w, lgbm_w)
+    # Weight models by differencing rule using the selected metric (rmse or mae).
+    xgb_w, lgbm_w = _compute_diff_weights(xgb_metrics, lgbm_metrics, weight_metric)
+    logger.info("Weights (%s) | XGBoost=%.3f  LightGBM=%.3f", weight_metric, xgb_w, lgbm_w)
 
     blended_preds   = _blend(xgb_preds, lgbm_preds, xgb_w, lgbm_w)
     ensemble_metrics = compute_all(test_df[TARGET_COL].values, blended_preds)

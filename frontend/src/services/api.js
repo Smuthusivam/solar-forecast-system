@@ -1,8 +1,10 @@
 import axios from "axios";
 
-// All API calls go to FastAPI running on port 8000
+// All API calls go to FastAPI; override with VITE_API_BASE_URL for deployments.
+const API_BASE_URL = import.meta?.env?.VITE_API_BASE_URL || "http://localhost:8000";
+
 const API = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: API_BASE_URL,
   timeout: 600000, // 10 min — AI correction + dual pipeline runs can be slow
 });
 
@@ -119,7 +121,7 @@ export async function exportPDF(sessionId) {
 }
 
 export function getCorrectedCSVUrl(correctionId) {
-  return `http://localhost:8000/api/correction/export/${correctionId}`;
+  return `${API_BASE_URL}/api/correction/export/${correctionId}`;
 }
 
 // ─────────────────────────────────────────

@@ -113,10 +113,14 @@ class ForecastRun(Base):
     __tablename__ = "forecast_runs"
 
     run_id         = Column(Integer,     primary_key=True, autoincrement=True)
+    dataset_id     = Column(Integer,     nullable=True, index=True)
     session_id     = Column(String(64),  nullable=False, index=True)
     filename       = Column(String(255), nullable=False)
     horizon        = Column(Integer,     nullable=False)
     detection_mode = Column(String(16),  nullable=False)
+    weight_metric  = Column(String(8),   nullable=False, default="rmse")
+    xgb_weight     = Column(Float,       nullable=True)
+    lgbm_weight    = Column(Float,       nullable=True)
 
     ensemble_rmse  = Column(Float,   nullable=False)
     ensemble_mae   = Column(Float,   nullable=False)
@@ -133,6 +137,36 @@ class ForecastRun(Base):
             f"file={self.filename!r} horizon={self.horizon}h "
             f"rmse={self.ensemble_rmse:.3f}>"
         )
+
+
+class Dataset(Base):
+    # Metadata about each uploaded CSV.
+    __tablename__ = "datasets"
+
+    dataset_id     = Column(Integer,     primary_key=True, autoincrement=True)
+    session_id     = Column(String(64),  nullable=False, index=True)
+    filename       = Column(String(255), nullable=False)
+    file_path      = Column(String(512), nullable=False)
+    file_size      = Column(Integer,     nullable=False)
+    file_hash      = Column(String(64),  nullable=False)
+    row_count      = Column(Integer,     nullable=False)
+    column_map     = Column(Text,        nullable=False)
+    detection_mode = Column(String(16),  nullable=False)
+    created_at     = Column(DateTime,    nullable=False, default=datetime.utcnow)
+
+
+class ForecastPoint(Base):
+    # Time-series output for each forecast run.
+    __tablename__ = "forecast_points"
+
+    point_id  = Column(Integer,  primary_key=True, autoincrement=True)
+    run_id    = Column(Integer,  nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    predicted = Column(Float,    nullable=False)
+    actual    = Column(Float,    nullable=True)
+    lower     = Column(Float,    nullable=True)
+    upper     = Column(Float,    nullable=True)
+    is_future = Column(Boolean,  nullable=False, default=False)
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -171,6 +205,32 @@ def save_forecast_run(db: Session, **kwargs) -> ForecastRun:
     db.commit()
     db.refresh(run)
     return run
+
+
+def save_dataset(db: Session, **kwargs) -> Dataset:
+    dataset = Dataset(**kwargs)
+    db.add(dataset)
+    db.commit()
+    db.refresh(dataset)
+    return dataset
+
+
+def save_forecast_points(db: Session, run_id: int, points: list[dict], is_future: bool = False) -> None:
+    records = []
+    for p in points:
+        records.append(
+            ForecastPoint(
+                run_id=run_id,
+                timestamp=p["timestamp"],
+                predicted=p["predicted"],
+                actual=p.get("actual"),
+                lower=p.get("lower"),
+                upper=p.get("upper"),
+                is_future=is_future,
+            )
+        )
+    db.add_all(records)
+    db.commit()
 
 
 def update_anomaly_count(db: Session, run_id: int, count: int) -> None:

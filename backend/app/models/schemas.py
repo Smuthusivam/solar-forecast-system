@@ -102,6 +102,7 @@ class ForecastRequest(BaseModel):
     session_id: str
     horizon:    int = Field(24, ge=1, le=8760, description="Forecast horizon in hours (1–8760)")
     train_size: int = Field(80, ge=50, le=95,  description="Training data percentage (50–95)")
+    weight_metric: str = Field("rmse", description="Ensemble weighting metric: rmse or mae")
 
 
 class ModelMetrics(BaseModel):

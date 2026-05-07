@@ -172,9 +172,9 @@ export default function AnomalyReport({ datasetId }) {
   ];
 
   const tabs = [
-    { key: "detection",  label: "🔍 Detection" },
-    { key: "correction", label: "🤖 AI Correction", disabled: !correctionResult },
-    { key: "comparison", label: "📊 Before vs After", disabled: !correctionResult },
+    { key: "detection",  label: "Detection" },
+    { key: "correction", label: "AI Correction", disabled: !correctionResult },
+    { key: "comparison", label: "Before vs After", disabled: !correctionResult },
   ];
 
   return (
@@ -192,7 +192,7 @@ export default function AnomalyReport({ datasetId }) {
               href={getCorrectedCSVUrl(correctionResult.session_id)}
               className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
             >
-              ⬇ Download Corrected CSV
+              Download Corrected CSV
             </a>
           )}
           <button
@@ -200,13 +200,13 @@ export default function AnomalyReport({ datasetId }) {
             disabled={loadingCorrection || loadingAnomalies}
             className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {loadingCorrection ? <><span className="animate-spin inline-block mr-1">⚙</span>Running AI Correction…</> : "🤖 Run AI Correction"}
+            {loadingCorrection ? "Running AI Correction..." : "Run AI Correction"}
           </button>
         </div>
       </div>
 
       {correctionError && (
-        <AlertBox>⚠ Correction failed: {correctionError}</AlertBox>
+        <AlertBox>Correction failed: {correctionError}</AlertBox>
       )}
 
       {/* Top stats */}
@@ -254,7 +254,7 @@ export default function AnomalyReport({ datasetId }) {
             <div className="text-red-500 text-sm">Error: {errorAnomalies}</div>
           ) : anomalies.length === 0 ? (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-6 rounded-xl text-center">
-              ✅ No anomalies detected — dataset is clean!
+              No anomalies detected. The dataset is clean.
             </div>
           ) : (
             <>

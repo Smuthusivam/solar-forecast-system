@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, Cell,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ReferenceLine
 } from "recharts";
 import { Card } from "../components/ui";
@@ -104,18 +103,6 @@ function ModelComparison() {
       });
       return row;
     });
-
-  // ── Radar chart data — uses TEST metrics ────────────────────────────
-  const maxRMSE = Math.max(...(models_info || []).map(m => m.metrics.rmse));
-  const maxMAE  = Math.max(...(models_info || []).map(m => m.metrics.mae));
-  const maxMAPE = Math.max(...(models_info || []).map(m => m.metrics.mape || 0));
-
-  const radarData = [
-    { metric: "R²",          ...Object.fromEntries((models_info || []).map(m => [m.model_name, parseFloat((m.metrics.r2 * 100).toFixed(1))])) },
-    { metric: "RMSE (inv)",  ...Object.fromEntries((models_info || []).map(m => [m.model_name, parseFloat(((1 - m.metrics.rmse / maxRMSE) * 100).toFixed(1))])) },
-    { metric: "MAE (inv)",   ...Object.fromEntries((models_info || []).map(m => [m.model_name, parseFloat(((1 - m.metrics.mae  / maxMAE)  * 100).toFixed(1))])) },
-    { metric: "MAPE (inv)",  ...Object.fromEntries((models_info || []).map(m => [m.model_name, parseFloat(((1 - (m.metrics.mape || 0) / (maxMAPE || 1)) * 100).toFixed(1))])) },
-  ];
 
   // ── Feature importance ────────────────────────────────────────────────
   const featData = feature_importance
@@ -409,25 +396,6 @@ function ModelComparison() {
                 stroke={MODEL_COLORS[m.model_name]} strokeWidth={1.5} dot={false} />
             ))}
           </LineChart>
-        </ResponsiveContainer>
-      </Card>
-
-      {/* Radar chart */}
-      <Card title="Model Performance Radar"
-        subtitle="Overall view across all metrics. Larger filled area = better model. RMSE/MAE/MAPE inverted so all metrics point outward for the best">
-        <ResponsiveContainer width="100%" height={340}>
-          <RadarChart data={radarData}>
-            <PolarGrid />
-            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
-            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 10 }} />
-            {(models_info || []).map(m => (
-              <Radar key={m.model_name} name={m.model_name} dataKey={m.model_name}
-                stroke={MODEL_COLORS[m.model_name]} fill={MODEL_COLORS[m.model_name]}
-                fillOpacity={0.15} strokeWidth={2} />
-            ))}
-            <Legend />
-            <Tooltip />
-          </RadarChart>
         </ResponsiveContainer>
       </Card>
 

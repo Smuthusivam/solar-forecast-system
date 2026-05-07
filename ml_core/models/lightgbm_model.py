@@ -17,24 +17,33 @@ class LightGBMModel:
 
     def __init__(self, params: dict = None):
         default_params = {
-            "n_estimators":      600,
-            "learning_rate":     0.01,
-            "num_leaves":        15,     # tightly capped to prevent overfitting
-            "max_depth":         4,
-            "min_child_samples": 50,
-            "min_split_gain":    0.1,
-            "subsample":         0.7,
-            "subsample_freq":    1,      # required for subsample to take effect in LightGBM
-            "colsample_bytree":  0.7,
-            "reg_alpha":         0.5,
-            "reg_lambda":        3.0,
-            "random_state":      42,
-            "n_jobs":            -1,
-            "verbosity":         -1,
+            "n_estimators":         1200,
+            "learning_rate":        0.03,
+            "num_leaves":           31,
+            "max_depth":            -1,
+            "min_child_samples":    30,
+            "min_split_gain":       0.0,
+            "subsample":            0.8,
+            "subsample_freq":       1,
+            "colsample_bytree":     0.8,
+            "reg_alpha":            0.1,
+            "reg_lambda":           1.0,
+            "objective":            "regression",
+            "metric":               "rmse",
+            "random_state":         42,
+            "n_jobs":               -1,
+            "verbosity":            -1,
+            "early_stopping_rounds": 50,
+            "eval_fraction":        0.1,
+            "min_eval_rows":        200,
         }
 
         if params:
             default_params.update(params)
+
+        self.early_stopping_rounds = default_params.pop("early_stopping_rounds")
+        self.eval_fraction         = default_params.pop("eval_fraction")
+        self.min_eval_rows         = default_params.pop("min_eval_rows")
 
         self.params          = default_params
         self.model           = LGBMRegressor(**self.params)
@@ -43,8 +52,29 @@ class LightGBMModel:
     def train(self, X_train: pd.DataFrame, y_train: pd.Series) -> None:
         # Fit LightGBM on the training feature matrix.
         self.feature_columns = list(X_train.columns)
-        self.model.fit(X_train, y_train)
-        print(f"[LightGBM] Trained on {len(X_train)} rows, {len(self.feature_columns)} features.")
+        X_all = X_train[self.feature_columns]
+        y_all = np.asarray(y_train)
+
+        use_eval = self.eval_fraction > 0 and len(X_all) >= self.min_eval_rows
+        if use_eval:
+            split_idx = int(len(X_all) * (1 - self.eval_fraction))
+            if split_idx <= 0 or split_idx >= len(X_all):
+                use_eval = False
+
+        if use_eval:
+            X_tr, X_val = X_all.iloc[:split_idx], X_all.iloc[split_idx:]
+            y_tr, y_val = y_all[:split_idx], y_all[split_idx:]
+            self.model.fit(
+                X_tr,
+                y_tr,
+                eval_set=[(X_val, y_val)],
+                verbose=False,
+                early_stopping_rounds=self.early_stopping_rounds,
+            )
+        else:
+            self.model.fit(X_all, y_all)
+
+        print(f"[LightGBM] Trained on {len(X_all)} rows, {len(self.feature_columns)} features.")
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         # Generate predictions; clips negatives to 0 since irradiance can't be negative.
@@ -77,6 +107,11 @@ class LightGBMModel:
             "model":           self.model,
             "feature_columns": self.feature_columns,
             "params":          self.params,
+            "training_params": {
+                "early_stopping_rounds": self.early_stopping_rounds,
+                "eval_fraction": self.eval_fraction,
+                "min_eval_rows": self.min_eval_rows,
+            },
         }
         joblib.dump(payload, path)
         print(f"[LightGBM] Model saved to {path}")
@@ -86,6 +121,10 @@ class LightGBMModel:
         self.model           = payload["model"]
         self.feature_columns = payload["feature_columns"]
         self.params          = payload["params"]
+        training_params      = payload.get("training_params", {})
+        self.early_stopping_rounds = training_params.get("early_stopping_rounds", self.early_stopping_rounds)
+        self.eval_fraction         = training_params.get("eval_fraction", self.eval_fraction)
+        self.min_eval_rows         = training_params.get("min_eval_rows", self.min_eval_rows)
         print(f"[LightGBM] Model loaded from {path}")
 
 

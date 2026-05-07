@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadCSV, runForecast } from "../services/api";
 import {
@@ -53,6 +53,7 @@ function getHeatColor(value, max) {
 
 function Upload() {
   const navigate = useNavigate();
+  const storageKey = "solar-forecast-upload-state";
 
   // ── State ────────────────────────────────────────
   const [file, setFile]           = useState(null);
@@ -64,12 +65,49 @@ function Upload() {
   const [error, setError]         = useState(null);
   const [trainSize, setTrainSize] = useState(80);
   const [activeTab, setActiveTab] = useState("data");
+  const [fileName, setFileName]   = useState("");
+
+  useEffect(() => {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw);
+      if (saved?.result) setResult(saved.result);
+      if (saved?.forecast) setForecast(saved.forecast);
+      if (typeof saved?.trainSize === "number") setTrainSize(saved.trainSize);
+      if (typeof saved?.activeTab === "string") setActiveTab(saved.activeTab);
+      if (typeof saved?.fileName === "string") setFileName(saved.fileName);
+    } catch {
+      localStorage.removeItem(storageKey);
+    }
+  }, []);
+
+  useEffect(() => {
+    const payload = {
+      result,
+      forecast,
+      trainSize,
+      activeTab,
+      fileName,
+    };
+    localStorage.setItem(storageKey, JSON.stringify(payload));
+  }, [result, forecast, trainSize, activeTab, fileName]);
+
+  function clearSession() {
+    setFile(null);
+    setResult(null);
+    setForecast(null);
+    setError(null);
+    setFileName("");
+    localStorage.removeItem(storageKey);
+  }
 
   // ── File picked from input ───────────────────────
   function handleFileChange(e) {
     const picked = e.target.files[0];
     if (picked) {
       setFile(picked);
+      setFileName(picked.name);
       setResult(null);
       setForecast(null);
       setError(null);
@@ -92,6 +130,7 @@ function Upload() {
     const dropped = e.dataTransfer.files[0];
     if (dropped && dropped.name.endsWith(".csv")) {
       setFile(dropped);
+      setFileName(dropped.name);
       setResult(null);
       setForecast(null);
       setError(null);
@@ -336,6 +375,11 @@ function Upload() {
               {file.name}
             </p>
           )}
+          {!file && fileName && (
+            <p className="mt-4 text-xs text-gray-500">
+              Last file: {fileName} (select again to re-upload)
+            </p>
+          )}
         </div>
 
         {/* Upload Button */}
@@ -354,6 +398,20 @@ function Upload() {
         {/* Error Message */}
         {error && (
           <p className="text-red-500 font-medium">{error}</p>
+        )}
+
+        {(result || forecast) && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-gray-400">
+              Restored session{fileName ? ` for ${fileName}` : ""}
+            </p>
+            <button
+              onClick={clearSession}
+              className="text-xs text-red-600 underline underline-offset-2"
+            >
+              Clear uploaded data
+            </button>
+          </div>
         )}
 
         {/* Detection Result Card */}

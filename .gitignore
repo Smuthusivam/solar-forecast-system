@@ -86,3 +86,5 @@ backend/storage/uploads/
 *.tmp
 *.bak.env
 *.env
+#. Agent customization
+.agent.md

@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, BarChart, Bar, Cell,
+  ScatterChart, Scatter, ZAxis,
 } from "recharts";
 import {
   getAnomalies,
@@ -20,7 +21,7 @@ import {
 } from "../services/forecastState";
 import {
   Section, SeverityBadge, ConfidenceBadge, SourceBadge, fmtWm2,
-  PageHeader,
+  PageHeader, AlertBox,
 } from "../components/ui";
 
 // -- Main component -----------------------------------------------------------

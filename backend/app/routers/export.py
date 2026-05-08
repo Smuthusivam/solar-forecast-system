@@ -5,14 +5,14 @@ from __future__ import annotations
 import io
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.routers.upload import get_session
-from app.services.anomaly import detect_anomalies
+from ml_core.anomaly import detect_anomalies
 from ml_core.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ def export_csv(session_id: str, horizon: int = 24):
     export_df.to_csv(buffer, index=False)
     csv_bytes = buffer.getvalue().encode()
 
-    filename = f"solar_forecast_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"solar_forecast_{session_id[:8]}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     _save_export(filename, csv_bytes)
 
     return StreamingResponse(
@@ -87,7 +87,7 @@ def export_pdf(session_id: str, horizon: int = 24):
         raise HTTPException(status_code=500, detail=str(exc))
 
     em           = result["metrics"]
-    pdf_filename = f"solar_forecast_{session_id[:8]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf_filename = f"solar_forecast_{session_id[:8]}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
 
     try:
         from reportlab.lib import colors
@@ -106,7 +106,7 @@ def export_pdf(session_id: str, horizon: int = 24):
         story.append(Spacer(1, 12))
 
         story.append(Paragraph(f"<b>File:</b> {filename}",                                          styles["Normal"]))
-        story.append(Paragraph(f"<b>Generated:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Generated:</b> {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]))
         story.append(Paragraph(f"<b>Horizon:</b> {horizon} hours",                                  styles["Normal"]))
         story.append(Paragraph(f"<b>Detection mode:</b> {result['detection_mode']}",                styles["Normal"]))
         story.append(Paragraph(f"<b>Rows processed:</b> {result['rows_processed']}",                styles["Normal"]))
@@ -202,7 +202,7 @@ def export_pdf(session_id: str, horizon: int = 24):
 
         text = (
             f"SOLAR IRRADIANCE FORECAST REPORT\n"
-            f"Generated : {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n"
+            f"Generated : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
             f"File      : {filename}\n"
             f"Horizon   : {horizon} hours\n"
             f"Mode      : {result['detection_mode']}\n"

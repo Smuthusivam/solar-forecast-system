@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db, save_forecast_run, save_forecast_points
-from app.services.anomaly import detect_anomalies
+from ml_core.anomaly import detect_anomalies
 from app.models.schemas import (
     ForecastRequest,
     ForecastResponse,

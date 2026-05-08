@@ -1,5 +1,5 @@
 """
-test_anomaly.py — Unit tests for backend/app/services/anomaly.py
+test_anomaly.py — Unit tests for ml_core/anomaly.py
 
 Covers: _hourly_max, _is_physically_impossible, _is_weather_coherent,
         _is_daytime, severity helpers,
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.services.anomaly import (
+from ml_core.anomaly import (
     DAYTIME_END,
     DAYTIME_START,
     _apply_physical_filters,

@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.routers.upload import get_session
-from app.services.anomaly import detect_anomalies
+from ml_core.anomaly import detect_anomalies
 from app.services.anomaly_corrector import _correct_all_async, compute_correction_stats
 
 logger = logging.getLogger(__name__)

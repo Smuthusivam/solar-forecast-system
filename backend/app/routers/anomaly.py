@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.routers.upload import get_session
-from app.services.anomaly import detect_anomalies
+from ml_core.anomaly import detect_anomalies
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

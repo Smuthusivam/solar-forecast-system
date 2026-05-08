@@ -59,13 +59,17 @@ function Upload() {
   // ── File picked from input ───────────────────────
   function handleFileChange(e) {
     const picked = e.target.files[0];
-    if (picked) {
-      setFile(picked);
-      setFileName(picked.name);
-      setResult(null);
-      setForecast(null);
-      setError(null);
+    if (!picked) return;
+    if (!picked.name.endsWith(".csv")) {
+      setError("Wrong file format. Please upload a CSV file.");
+      e.target.value = "";
+      return;
     }
+    setFile(picked);
+    setFileName(picked.name);
+    setResult(null);
+    setForecast(null);
+    setError(null);
   }
 
   // ── Drag and drop handlers ───────────────────────
@@ -89,7 +93,7 @@ function Upload() {
       setForecast(null);
       setError(null);
     } else {
-      setError("Please drop a CSV file only.");
+      setError("Wrong file format. Please upload a CSV file.");
     }
   }
 
@@ -105,7 +109,9 @@ function Upload() {
       setForecast(null);
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      if (detail?.code === "irrelevant_dataset") {
+      if (detail?.code === "invalid_file_type") {
+        setError("Wrong file format. Please upload a CSV file.");
+      } else if (detail?.code === "irrelevant_dataset") {
         setError(detail.message);
       } else if (detail?.code === "preprocessing_failed") {
         setError(detail.message);

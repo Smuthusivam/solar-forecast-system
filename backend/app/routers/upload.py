@@ -54,7 +54,7 @@ def get_session(session_id: str) -> dict[str, Any]:
             status_code=404,
             detail={
                 "code":    "session_not_found",
-                "message": f"Session '{session_id}' not found. Please upload a file first.",
+                "message": "Session not found. Please upload a file first.",
                 "field":   "session_id",
             },
         )
@@ -91,7 +91,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             status_code=400,
             detail={
                 "code":    "invalid_file_type",
-                "message": "Only CSV files are supported.",
+                "message": "Please upload a CSV file.",
                 "field":   "file",
             },
         )
@@ -103,7 +103,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             status_code=400,
             detail={
                 "code":    "empty_file",
-                "message": "The uploaded file is empty.",
+                "message": "The uploaded file is empty. Please check the file and try again.",
                 "field":   "file",
             },
         )
@@ -129,7 +129,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             status_code=422,
             detail={
                 "code":    "parse_error",
-                "message": f"Could not read CSV: {exc}",
+                "message": f"We couldn't read the CSV file — {exc}",
                 "field":   "file",
             },
         )

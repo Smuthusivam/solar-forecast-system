@@ -17,14 +17,6 @@ class DetectionMode(str, Enum):
     ESTIMATED = "estimated"
 
 
-class ForecastHorizon(int, Enum):
-    H24  = 24
-    H48  = 48
-    H72  = 72
-    H120 = 120
-    H168 = 168
-
-
 class AnomalySeverity(str, Enum):
     LOW    = "low"
     MEDIUM = "medium"
@@ -110,7 +102,6 @@ class ModelMetrics(BaseModel):
     rmse: float = Field(..., description="Root Mean Square Error (W/m²)")
     mae:  float = Field(..., description="Mean Absolute Error (W/m²)")
     r2:   float = Field(..., description="Coefficient of Determination")
-    mape: Optional[float] = Field(None, description="Mean Absolute Percentage Error (%)")
 
 
 class ForecastPoint(BaseModel):
@@ -123,6 +114,7 @@ class ForecastPoint(BaseModel):
 
 
 class PerModelInfo(BaseModel):
+    model_config = {"protected_namespaces": ()}
     # Metrics for one individual model — used in Model Comparison page.
     model_name:    str
     predictions:   list[float]
@@ -204,6 +196,7 @@ class MetricsDelta(BaseModel):
 
 
 class CorrectionRunResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
     """Full response from POST /api/correction/run/{session_id}."""
     session_id:          str
     correction_id:       str  = Field(..., description="UUID for this correction session (used in export)")
@@ -211,7 +204,7 @@ class CorrectionRunResponse(BaseModel):
     anomalies_corrected: int  = Field(..., description="Number of points actually corrected")
     stats:               CorrectionStats
     correction_log:      list[CorrectionEntry]
-    # metrics_comparison keys are metric names: "rmse", "mae", "r2", "mape"
+    # metrics_comparison keys are metric names: "rmse", "mae", "r2"
     metrics_comparison:  dict[str, MetricsDelta] = Field(
         default_factory=dict,
         description="Metric deltas before/after correction — empty if pipeline was unavailable"

@@ -223,7 +223,7 @@ function History() {
                               run_id:         run.run_id,
                               detection_mode: run.detection_mode,
                               best_model:     run.best_model || "best model",
-                              metrics:        { rmse: run.rmse, mae: run.mae, r2: run.r2, mape: 0 },
+                              metrics:        { rmse: run.rmse, mae: run.mae, r2: run.r2 },
                               forecast:       pointsData.points.filter(p => !p.is_future),
                               future_forecast: pointsData.points.filter(p => p.is_future),
                               models_info:    [],

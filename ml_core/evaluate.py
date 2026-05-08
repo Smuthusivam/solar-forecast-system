@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 
 
 def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -24,20 +23,8 @@ def r2(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(1 - ss_res / ss_tot)
 
 
-def mape(y_true: np.ndarray, y_pred: np.ndarray, epsilon: float = 1e-8) -> float:
-    # Mean Absolute Percentage Error — only computed on daytime rows (actual > 10 W/m²).
-    mask = y_true > 10
-    if mask.sum() == 0:
-        return 0.0
-
-    y_true_day = y_true[mask]
-    y_pred_day = y_pred[mask]
-
-    return float(np.mean(np.abs((y_true_day - y_pred_day) / (y_true_day + epsilon))) * 100)
-
-
 def compute_all(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
-    # Run all four metrics and return a dict rounded to 4 decimal places.
+    # Run all metrics and return a dict rounded to 4 decimal places.
     y_true = np.array(y_true, dtype=float)
     y_pred = np.array(y_pred, dtype=float)
 
@@ -45,47 +32,6 @@ def compute_all(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
         "rmse": round(rmse(y_true, y_pred), 4),
         "mae":  round(mae(y_true,  y_pred), 4),
         "r2":   round(r2(y_true,   y_pred), 4),
-        "mape": round(mape(y_true,  y_pred), 4),
     }
 
 
-def compare_models(metrics_list: list) -> pd.DataFrame:
-    # Return a DataFrame of per-model metrics sorted by RMSE ascending.
-    df   = pd.DataFrame(metrics_list)
-    cols = ["model", "rmse", "mae", "r2", "mape"]
-    df   = df[[c for c in cols if c in df.columns]]
-    df   = df.sort_values("rmse").reset_index(drop=True)
-    return df
-
-
-if __name__ == "__main__":
-
-    np.random.seed(42)
-    n = 500
-
-    y_true = np.abs(np.random.normal(400, 150, n))
-
-    y_good = np.clip(y_true + np.random.normal(0, 40, n),  0, None)
-    y_poor = np.clip(y_true + np.random.normal(0, 120, n), 0, None)
-
-    print("=" * 45)
-    print("Good model metrics:")
-    good_metrics = compute_all(y_true, y_good)
-    for k, v in good_metrics.items():
-        print(f"  {k.upper():>6}: {v}")
-
-    print("\nPoor model metrics:")
-    poor_metrics = compute_all(y_true, y_poor)
-    for k, v in poor_metrics.items():
-        print(f"  {k.upper():>6}: {v}")
-
-    metrics_list = [
-        {**good_metrics, "model": "XGBoost"},
-        {**poor_metrics, "model": "Prophet"},
-        {"rmse": 35.2, "mae": 26.1, "r2": 0.95, "mape": 6.8, "model": "Ensemble"},
-    ]
-    comparison = compare_models(metrics_list)
-    print(f"\nModel comparison table (sorted by RMSE):")
-    print(comparison.to_string(index=False))
-
-    print("\nevaluate.py passed all checks.")

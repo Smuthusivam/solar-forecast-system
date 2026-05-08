@@ -541,10 +541,21 @@ export default function AnomalyReport({ datasetId }) {
                 {mc.rmse  && <MetricCard label="RMSE"  original={mc.rmse.original}  corrected={mc.rmse.corrected}  />}
                 {mc.mae   && <MetricCard label="MAE"   original={mc.mae.original}   corrected={mc.mae.corrected}   />}
                 {mc.r2    && <MetricCard label="R²"    original={mc.r2.original}     corrected={mc.r2.corrected}    higherIsBetter />}
-                {mc.mape  && <MetricCard label="MAPE"  original={mc.mape?.original}  corrected={mc.mape?.corrected} />}
               </div>
             </div>
           )}
+
+      {/* Footer action: go back to model comparison */}
+      <div className="pt-6">
+        <div className="flex justify-end">
+          <button
+            onClick={() => navigate("/compare", { state: { forecast, result } })}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 transition"
+          >
+            Back to Model Comparison
+          </button>
+        </div>
+      </div>
 
           {/* ── Chart 1: Forecast overlay ── */}
           {forecastChartData.length > 0 && (
@@ -659,13 +670,13 @@ export default function AnomalyReport({ datasetId }) {
                   <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                     <tr>
                       <th className="px-4 py-2 text-left">Model</th>
-                      {["RMSE", "MAE", "R²", "MAPE"].map((m) => (
+                      {["RMSE", "MAE", "R²"].map((m) => (
                         <th key={m} colSpan={2} className="px-3 py-2 text-center border-l border-gray-200">{m}</th>
                       ))}
                     </tr>
                     <tr className="border-t border-gray-100">
                       <th className="px-4 py-1" />
-                      {["RMSE", "MAE", "R²", "MAPE"].map((m) => (
+                      {["RMSE", "MAE", "R²"].map((m) => (
                         <>
                           <th key={`${m}-o`} className="px-3 py-1 text-center text-orange-500 font-normal border-l border-gray-200">Before</th>
                           <th key={`${m}-c`} className="px-3 py-1 text-center text-purple-500 font-normal">After</th>
@@ -680,7 +691,7 @@ export default function AnomalyReport({ datasetId }) {
                       return (
                         <tr key={model} className="hover:bg-gray-50">
                           <td className="px-4 py-2 font-semibold capitalize">{model}</td>
-                          {["rmse", "mae", "r2", "mape"].map((metric) => {
+                          {["rmse", "mae", "r2"].map((metric) => {
                             const higherBetter = metric === "r2";
                             const improved = higherBetter ? corr[metric] > orig[metric] : corr[metric] < orig[metric];
                             return (

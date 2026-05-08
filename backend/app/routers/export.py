@@ -118,7 +118,6 @@ def export_pdf(session_id: str, horizon: int = 24):
             ["RMSE",   f"{em['rmse']:.2f} W/m²"],
             ["MAE",    f"{em['mae']:.2f} W/m²"],
             ["R²",     f"{em['r2']:.4f}"],
-            ["MAPE",   f"{em['mape']:.2f}%"],
         ]
         t = Table(metrics_data, colWidths=[200, 200])
         t.setStyle(TableStyle([
@@ -211,8 +210,7 @@ def export_pdf(session_id: str, horizon: int = 24):
             f"MODEL METRICS\n"
             f"RMSE : {em['rmse']:.2f} W/m²\n"
             f"MAE  : {em['mae']:.2f} W/m²\n"
-            f"R²   : {em['r2']:.4f}\n"
-            f"MAPE : {em['mape']:.2f}%\n\n"
+            f"R²   : {em['r2']:.4f}\n\n"
             f"ANOMALIES\n"
             f"Total: {anomalies['anomaly_count']} "
             f"({anomalies['anomaly_rate'] * 100:.1f}%)\n"

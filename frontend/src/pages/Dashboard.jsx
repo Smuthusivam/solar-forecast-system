@@ -190,7 +190,7 @@ function Dashboard() {
       </div>
 
       {/* ─── Top metrics row ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <StatCard label="RMSE" value={em.rmse.toFixed(2)} unit="W/m²"
           color="text-blue-600" sub="lower is better" />
         <StatCard label="MAE" value={em.mae.toFixed(2)} unit="W/m²"
@@ -198,12 +198,10 @@ function Dashboard() {
         <StatCard label="R²" value={em.r2.toFixed(4)}
           color={em.r2 > 0.85 ? "text-green-600" : "text-orange-500"}
           sub={em.r2 > 0.85 ? "excellent fit" : "moderate fit"} />
-        <StatCard label="MAPE" value={em.mape.toFixed(2)} unit="%"
-          color="text-indigo-600" sub="daytime only" />
       </div>
 
       <Card title="Predicted vs Actual"
-        subtitle={`${forecast.best_model} forecast on the held-out test set with confidence intervals`}>
+        subtitle={`Daytime values only · Best model: ${forecast.best_model} · held-out test set with confidence intervals`}>
         <ResponsiveContainer width="100%" height={400}>
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -219,25 +217,6 @@ function Dashboard() {
             <Line type="monotone" dataKey="Predicted" stroke="#3b82f6" strokeWidth={2} dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
-      </Card>
-
-      <Card title="Model Comparison"
-        subtitle="XGBoost vs LightGBM on the held-out test set — best model used for forecasting">
-        <div className="grid grid-cols-2 gap-4">
-          {(forecast.models_info || []).map(m => (
-            <div key={m.model_name}
-              className={`rounded-lg p-4 text-center ${m.is_best ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}>
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <p className="text-sm text-gray-500">{m.model_name}</p>
-                {m.is_best && <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">Best</span>}
-              </div>
-              <div className="mt-2 text-xs text-gray-400 space-y-0.5">
-                <p>RMSE: {m.metrics.rmse.toFixed(2)}</p>
-                <p>R²: {m.metrics.r2.toFixed(4)}</p>
-              </div>
-            </div>
-          ))}
-        </div>
       </Card>
 
       {forecast.feature_importance && (

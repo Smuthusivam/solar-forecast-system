@@ -17,7 +17,6 @@ const METRIC_INFO = {
   rmse: { label: "RMSE",  unit: "W/m²", lower: true,  desc: "Root Mean Square Error — penalises large errors" },
   mae:  { label: "MAE",   unit: "W/m²", lower: true,  desc: "Mean Absolute Error" },
   r2:   { label: "R²",    unit: "",     lower: false, desc: "Coefficient of Determination — 1.0 = perfect" },
-  mape: { label: "MAPE",  unit: "%",    lower: true,  desc: "Mean Absolute Percentage Error" },
 };
 
 // Strict model health check — considers absolute test quality, R² gap, AND RMSE ratio.
@@ -188,9 +187,9 @@ function ModelComparison() {
               <tr className="bg-gray-50 border-b">
                 <th rowSpan={2} className="text-left p-3 text-gray-600 align-bottom">Model</th>
                 {(view === "train" || view === "both") &&
-                  <th colSpan={4} className="text-center p-2 text-gray-600 bg-blue-50">TRAIN SET</th>}
+                  <th colSpan={3} className="text-center p-2 text-gray-600 bg-blue-50">TRAIN SET</th>}
                 {(view === "test" || view === "both") &&
-                  <th colSpan={4} className="text-center p-2 text-gray-600 bg-orange-50">TEST SET</th>}
+                  <th colSpan={3} className="text-center p-2 text-gray-600 bg-orange-50">TEST SET</th>}
                 <th rowSpan={2} className="text-right p-3 text-gray-600 align-bottom">Status</th>
               </tr>
               <tr className="bg-gray-50 border-b">
@@ -199,7 +198,6 @@ function ModelComparison() {
                     <th className="text-right p-2 text-gray-500 bg-blue-50">RMSE</th>
                     <th className="text-right p-2 text-gray-500 bg-blue-50">MAE</th>
                     <th className="text-right p-2 text-gray-500 bg-blue-50">R²</th>
-                    <th className="text-right p-2 text-gray-500 bg-blue-50">MAPE</th>
                   </>
                 )}
                 {(view === "test" || view === "both") && (
@@ -207,7 +205,6 @@ function ModelComparison() {
                     <th className="text-right p-2 text-gray-500 bg-orange-50">RMSE</th>
                     <th className="text-right p-2 text-gray-500 bg-orange-50">MAE</th>
                     <th className="text-right p-2 text-gray-500 bg-orange-50">R²</th>
-                    <th className="text-right p-2 text-gray-500 bg-orange-50">MAPE</th>
                   </>
                 )}
               </tr>
@@ -231,7 +228,6 @@ function ModelComparison() {
                         <td className={`p-2 text-right font-medium ${(m.train_metrics?.r2 || 0) > 0.9 ? "text-green-600" : "text-orange-500"}`}>
                           {m.train_metrics?.r2?.toFixed(4) ?? "—"}
                         </td>
-                        <td className="p-2 text-right">{m.train_metrics?.mape?.toFixed(2) ?? "—"}</td>
                       </>
                     )}
                     {(view === "test" || view === "both") && (
@@ -241,7 +237,6 @@ function ModelComparison() {
                         <td className={`p-2 text-right font-medium ${m.metrics.r2 > 0.9 ? "text-green-600" : m.metrics.r2 > 0 ? "text-yellow-600" : "text-red-500"}`}>
                           {m.metrics.r2.toFixed(4)}
                         </td>
-                        <td className="p-2 text-right">{m.metrics.mape?.toFixed(2) ?? "—"}</td>
                       </>
                     )}
                     <td className="p-3 text-right">

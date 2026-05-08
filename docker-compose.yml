@@ -1,0 +1,86 @@
+# Solar Irradiance Forecasting System — full-stack deployment.
+# Each service runs in its own container on a private network.
+#
+# Quick start:
+#   cp .env.example .env        # fill in ANTHROPIC_API_KEY + POSTGRES_PASSWORD
+#   docker compose up -d --build
+#   open http://localhost
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: solar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-solar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB:       ${POSTGRES_DB:-solar_forecast}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/postgres:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solar} -d ${POSTGRES_DB:-solar_forecast}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - solar-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: solar-forecast-backend:latest
+    container_name: solar-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV:            ${APP_ENV:-production}
+      DATABASE_URL:       postgresql://${POSTGRES_USER:-solar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-solar_forecast}
+      DB_POOL_SIZE:       ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW:    ${DB_MAX_OVERFLOW:-10}
+      DB_ECHO:            ${DB_ECHO:-false}
+      ANTHROPIC_API_KEY:  ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env}
+      ALLOWED_ORIGINS:    ${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
+    volumes:
+      # Persist uploads, exports, and trained models across container rebuilds
+      - backend_uploads:/app/backend/storage/uploads
+      - backend_exports:/app/backend/storage/exports
+      - backend_models:/app/ml_core/saved_models
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - solar-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Empty = same-origin requests; nginx proxies /api/* to backend
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    image: solar-forecast-frontend:latest
+    container_name: solar-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - solar-net
+
+networks:
+  solar-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  backend_uploads:
+  backend_exports:
+  backend_models:

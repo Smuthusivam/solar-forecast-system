@@ -169,6 +169,7 @@ export function NavBar() {
     { to: "/compare", label: "Model Comparison" },
     { to: "/anomalies", label: "Anomaly" },
     { to: "/forecast", label: "Forecast" },
+    { to: "/history", label: "View History" },
   ];
 
   return (

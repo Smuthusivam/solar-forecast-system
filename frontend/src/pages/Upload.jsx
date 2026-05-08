@@ -191,15 +191,6 @@ function Upload() {
         <PageHeader
           title="Solar Irradiance Forecasting"
           subtitle="Upload a solar or weather CSV to begin the forecast workflow"
-          actions={[
-            <button
-              key="history"
-              onClick={() => navigate("/history")}
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              View History
-            </button>,
-          ]}
         />
 
         {/* Drop Zone */}

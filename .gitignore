@@ -78,6 +78,7 @@ desktop.ini
 backend/storage/exports/
 backend/storage/db/
 backend/storage/uploads/
+backend/storage/sessions/
 
 # ─────────────────────────────────────────────
 # Logs and temp files

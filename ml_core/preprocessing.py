@@ -359,15 +359,32 @@ def preprocess(
     df = _coerce_numeric(df)
     df = _clip_to_bounds(df)
 
-    # Step 7: fill remaining gaps
-    df = _fill_missing(df)
-
-    # Step 8: make sure we ended up with something usable
+    # Step 7: validate irradiance BEFORE filling — once filled NaNs become 0 and are invisible
     if "irradiance" not in df.columns:
         raise ValueError(
             "No irradiance column found. Please upload a CSV that contains a GHI or irradiance column."
         )
 
+    irr_missing = df["irradiance"].isna().sum()
+    irr_pct_missing = irr_missing / len(df) * 100
+    irr_nonzero = (df["irradiance"] > 0).sum()
+
+    if irr_nonzero == 0 and irr_missing == len(df):
+        raise ValueError(
+            "The GHI/irradiance column is entirely empty. "
+            "Please check your CSV — the irradiance values appear to be missing or not mapped correctly."
+        )
+
+    if irr_pct_missing > 80:
+        raise ValueError(
+            f"The GHI/irradiance column is {irr_pct_missing:.0f}% empty. "
+            "Too little data to produce a reliable forecast — please check your CSV."
+        )
+
+    # Step 8: fill remaining gaps
+    df = _fill_missing(df)
+
+    # Step 9: make sure we ended up with enough rows
     if len(df) < MIN_ROWS:
         raise ValueError(
             f"Only {len(df)} rows remain after cleaning — "

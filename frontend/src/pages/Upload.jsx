@@ -272,11 +272,11 @@ function Upload() {
                 Detection Result
               </h2>
               <span className={`text-xs font-semibold px-3 py-1 rounded-full
-                ${result.mode === "direct"
+                ${result.detection_mode === "direct"
                   ? "bg-green-100 text-green-700"
                   : "bg-yellow-100 text-yellow-700"
                 }`}>
-                {result.mode === "direct" ? "Direct GHI" : "GHI Estimated"}
+                {result.detection_mode === "direct" ? "Direct GHI" : "GHI Estimated"}
               </span>
             </div>
 
@@ -451,6 +451,72 @@ function Upload() {
                     Time series MUST NOT be shuffled. The model is trained on earlier data
                     and evaluated on the most recent slice to simulate real forecasting.
                   </p>
+                </Card>
+              </>
+            )}
+
+            {/* ── Columns ───────────────────────────── */}
+            {activeTab === "columns" && (
+              <>
+                <Card title="Detected Column Mapping"
+                  subtitle="How Claude mapped your CSV columns to physical variables">
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(result.detected_columns || {}).map(([key, val]) => {
+                      // Timestamp null means NSRDB split date columns — handled automatically
+                      const display = !val && key === "timestamp"
+                        ? "auto (Year/Month/Day/Hour)"
+                        : val || "not found";
+                      const found = !!val || key === "timestamp";
+                      return (
+                        <span key={key}
+                          className={`text-xs px-3 py-1 rounded-full font-medium border
+                            ${found
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-gray-100 text-gray-400 border-gray-200"}`}>
+                          {key}: <strong>{display}</strong>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {result.detection_mode === "estimated" && (
+                    <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                      No GHI/irradiance column found — solar irradiance will be <strong>estimated</strong> from weather variables using the Angstrom-Prescott model.
+                    </div>
+                  )}
+                </Card>
+
+                <Card title="All Available Columns"
+                  subtitle="All columns present in the dataset after preprocessing">
+                  <div className="flex flex-wrap gap-2">
+                    {(uploadStats?.columns_available || []).map((col) => (
+                      <span key={col}
+                        className="bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full">
+                        {col}
+                      </span>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card title="Detection Summary"
+                  subtitle="Column detection confidence and mode">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <StatCard label="Mode"
+                      value={result.detection_mode}
+                      color={result.detection_mode === "direct" ? "text-green-600" : "text-yellow-600"}
+                      sub={result.detection_mode === "direct" ? "GHI column found" : "GHI will be estimated"} />
+                    <StatCard label="Confidence"
+                      value={(result.confidence * 100).toFixed(0)}
+                      unit="%"
+                      color="text-indigo-600" sub="column mapping certainty" />
+                    <StatCard label="Warnings"
+                      value={result.warnings?.length || 0}
+                      color="text-gray-600" sub="non-fatal issues" />
+                  </div>
+                  {result.warnings?.length > 0 && (
+                    <ul className="mt-4 list-disc pl-5 text-sm text-gray-600 space-y-1">
+                      {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  )}
                 </Card>
               </>
             )}

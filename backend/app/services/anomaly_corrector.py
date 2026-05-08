@@ -28,11 +28,11 @@ GHI_MAX = 1200.0
 # Nighttime hours — irradiance must be 0
 NIGHT_HOURS = set(range(0, 5)) | set(range(21, 24))
 
-# Anomalies per Claude call — smaller batches = more accurate JSON from Claude
-BATCH_SIZE = 10
-
-# Max simultaneous Claude API calls — avoids rate-limit 429s
-MAX_CONCURRENT = 15
+# One anomaly per Claude call — guarantees complete result, no truncation ever.
+# Haiku + 20 concurrent = 380 anomalies done in ~20 waves, each wave ~1-2s.
+MAX_CONCURRENT    = 20
+_CORRECTION_MODEL = "claude-haiku-4-5-20251001"
+_MAX_TOKENS       = 150  # single JSON object needs ~80 tokens; 150 is safe headroom
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -123,22 +123,15 @@ def _get_context_rows(df: pd.DataFrame, idx: int, context_cols: List[str]) -> Li
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_batch_prompt(batch: List[Dict], column_map: Dict[str, str]) -> str:
-    items_json = json.dumps(batch, default=str)  # compact, no indent — fewer tokens
+    item = batch[0]  # always one item per call
+    item_json = json.dumps(item, default=str)
     weather_keys = list(column_map.keys())
-    return f"""Solar irradiance sensor anomaly correction. Fix {len(batch)} flagged readings.
-Weather columns available: {weather_keys}
-
-Rules:
-- Night (hours 0-4, 21-23): corrected_value=0.0, is_genuine=true
-- If value matches neighbours within 30%: is_genuine=false, corrected_value=original_value
-- Bounds: 0-1200 W/m²
-- Use context rows and weather to estimate plausible daytime values
-
-Data:
-{items_json}
-
-Respond with a JSON array only, one object per input in order:
-{{"timestamp":"<same>","is_genuine":<bool>,"corrected_value":<float>,"reasoning":"<one sentence, no quotes>","confidence":"<high|medium|low>"}}"""
+    return f"""Fix this solar irradiance sensor anomaly.
+Weather columns: {weather_keys}
+Rules: night(0-4,21-23)=0.0; within 30% of neighbours=not genuine; bounds 0-1200 W/m²
+Data: {item_json}
+Reply with exactly one JSON object:
+{{"timestamp":"<same>","is_genuine":<bool>,"corrected_value":<float>,"reasoning":"<one sentence>","confidence":"<high|medium|low>"}}"""
 
 
 def _sanitise_raw_json(raw: str) -> str:
@@ -189,8 +182,8 @@ async def _call_claude_batch(
         prompt = _build_batch_prompt(batch_items, column_map)
 
         response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=4096,
+            model=_CORRECTION_MODEL,
+            max_tokens=_MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -338,85 +331,74 @@ async def _correct_all_async(
         len(ai_batch),
     )
 
-    # ── Split into batches and fire all concurrently ─────────────────────────
-    batches = [
-        (ai_batch[s: s + BATCH_SIZE], ai_batch_meta[s: s + BATCH_SIZE])
-        for s in range(0, len(ai_batch), BATCH_SIZE)
-    ]
+    # ── Fire one call per anomaly, all concurrently up to MAX_CONCURRENT ────────
     logger.info(
-        "Firing %d Claude batch(es) concurrently (max %d at a time) — %d anomalies total",
-        len(batches), MAX_CONCURRENT, len(ai_batch),
+        "Firing %d individual Claude calls (max %d concurrent) — one per anomaly",
+        len(ai_batch), MAX_CONCURRENT,
     )
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-    batch_responses = await asyncio.gather(
-        *[_call_claude_batch(items, column_map, semaphore) for items, _ in batches],
+
+    # Wrap each single-item batch in a list so _call_claude_batch interface is unchanged
+    single_responses = await asyncio.gather(
+        *[_call_claude_batch([item], column_map, semaphore) for item in ai_batch],
         return_exceptions=True,
     )
 
-    for batch_idx, ((batch_items, batch_meta), results) in enumerate(zip(batches, batch_responses)):
-        if isinstance(results, Exception):
-            logger.error("Batch %d/%d failed: %s", batch_idx + 1, len(batches), results, exc_info=results)
-            for meta in batch_meta:
-                fallback = _interpolate_fallback(corrected_df, meta["i"], irradiance_col)
-                corrected_df.iloc[meta["i"], col_loc] = fallback
-                correction_log.append({
-                    "timestamp": meta["ts"],
-                    "original_value": meta["bad_value"],
-                    "corrected_value": round(fallback, 4),
-                    "reasoning": f"AI batch failed — interpolation used. ({str(results)[:80]})",
-                    "confidence": "low",
-                    "method_flagged_by": meta["method"],
-                    "severity": meta["severity"],
-                    "correction_source": "interpolation_fallback",
-                })
-            continue
+    for idx, (meta, response) in enumerate(zip(ai_batch_meta, single_responses)):
+        i         = meta["i"]
+        bad_value = meta["bad_value"]
 
-        if len(results) != len(batch_meta):
-            logger.warning(
-                "Batch %d/%d: Claude returned %d results for %d inputs — padding missing with interpolation",
-                batch_idx + 1, len(batches), len(results), len(batch_meta),
-            )
-            # Pad with None so zip still works
-            results = list(results) + [None] * (len(batch_meta) - len(results))
-
-        logger.info("Batch %d/%d: %d results received from Claude", batch_idx + 1, len(batches), len(results))
-
-        for meta, result in zip(batch_meta, results):
-            i         = meta["i"]
-            bad_value = meta["bad_value"]
-
-            if result is None or not isinstance(result, dict):
-                fallback = _interpolate_fallback(corrected_df, i, irradiance_col)
-                corrected_df.iloc[i, col_loc] = fallback
-                correction_log.append({
-                    "timestamp": meta["ts"],
-                    "original_value": bad_value,
-                    "corrected_value": round(fallback, 4),
-                    "reasoning": "Missing result from AI batch — interpolation used.",
-                    "confidence": "low",
-                    "method_flagged_by": meta["method"],
-                    "severity": meta["severity"],
-                    "correction_source": "interpolation_fallback",
-                })
-                continue
-
-            if not result.get("is_genuine", True):
-                logger.debug("Claude: value at %s is plausible, skipping correction", meta["ts"])
-                continue
-
-            corrected_value = max(GHI_MIN, min(GHI_MAX, float(result["corrected_value"])))
-            corrected_df.iloc[i, col_loc] = corrected_value
+        if isinstance(response, Exception):
+            logger.error("Call %d failed: %s", idx + 1, response)
+            fallback = _interpolate_fallback(corrected_df, i, irradiance_col)
+            corrected_df.iloc[i, col_loc] = fallback
             correction_log.append({
                 "timestamp": meta["ts"],
                 "original_value": bad_value,
-                "corrected_value": round(corrected_value, 4),
-                "reasoning": result.get("reasoning", ""),
-                "confidence": result.get("confidence", "medium"),
+                "corrected_value": round(fallback, 4),
+                "reasoning": f"AI call failed — interpolation used. ({str(response)[:80]})",
+                "confidence": "low",
                 "method_flagged_by": meta["method"],
                 "severity": meta["severity"],
-                "correction_source": "ai",
+                "correction_source": "interpolation_fallback",
             })
+            continue
+
+        # response is a list with exactly one item
+        result = response[0] if response else None
+
+        if result is None or not isinstance(result, dict):
+            fallback = _interpolate_fallback(corrected_df, i, irradiance_col)
+            corrected_df.iloc[i, col_loc] = fallback
+            correction_log.append({
+                "timestamp": meta["ts"],
+                "original_value": bad_value,
+                "corrected_value": round(fallback, 4),
+                "reasoning": "No valid result from AI — interpolation used.",
+                "confidence": "low",
+                "method_flagged_by": meta["method"],
+                "severity": meta["severity"],
+                "correction_source": "interpolation_fallback",
+            })
+            continue
+
+        if not result.get("is_genuine", True):
+            logger.debug("Claude: value at %s is plausible, skipping correction", meta["ts"])
+            continue
+
+        corrected_value = max(GHI_MIN, min(GHI_MAX, float(result["corrected_value"])))
+        corrected_df.iloc[i, col_loc] = corrected_value
+        correction_log.append({
+            "timestamp": meta["ts"],
+            "original_value": bad_value,
+            "corrected_value": round(corrected_value, 4),
+            "reasoning": result.get("reasoning", ""),
+            "confidence": result.get("confidence", "medium"),
+            "method_flagged_by": meta["method"],
+            "severity": meta["severity"],
+            "correction_source": "ai",
+        })
 
     ai_count      = sum(1 for c in correction_log if c["correction_source"] == "ai")
     physics_count = sum(1 for c in correction_log if c["correction_source"] == "physics_rule")

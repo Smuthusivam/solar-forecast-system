@@ -301,16 +301,23 @@ def _estimate_ghi(df: pd.DataFrame) -> pd.DataFrame:
 
     n     = len(df)
     hours = df.index.hour
+    doy   = df.index.dayofyear  # day of year for seasonal daylight length adjustment
 
-    # Sinusoidal solar elevation — peaks at noon, zero at 6am and 6pm
-    daytime_mask = (hours >= 6) & (hours <= 18)
-    solar_angle  = np.where(
-        daytime_mask,
-        np.sin(np.pi * (hours - 6) / 12),
+    # Seasonal daylight adjustment — days are longer in summer (DOY ~172) shorter in winter
+    # Daylight hours range roughly 8–16h depending on season (temperate latitude approximation)
+    daylight_hours = 12 + 4 * np.sin(2 * np.pi * (doy - 80) / 365)
+    sunrise = 12 - daylight_hours / 2
+    sunset  = 12 + daylight_hours / 2
+
+    # Solar elevation proxy — sine curve between sunrise and sunset, zero otherwise
+    solar_angle = np.where(
+        (hours >= sunrise) & (hours <= sunset),
+        np.sin(np.pi * (hours - sunrise) / daylight_hours),
         0.0,
-    )
+    ).clip(0)
 
-    clearness = np.full(n, 0.75)
+    daytime_mask = solar_angle > 0
+    clearness    = np.full(n, 0.75)
 
     if "cloud_cover" in df.columns:
         cloud_fraction = np.clip(df["cloud_cover"].values / 100.0, 0.0, 1.0)
@@ -323,7 +330,6 @@ def _estimate_ghi(df: pd.DataFrame) -> pd.DataFrame:
         logger.info("Humidity adjustment applied")
 
     if "sunshine_hours" in df.columns:
-        # Normalise against 12 hours of max possible daylight
         sun_fraction = np.clip(df["sunshine_hours"].values / 12.0, 0.0, 1.0)
         clearness   *= (0.25 + 0.75 * sun_fraction)
         logger.info("Sunshine hours adjustment applied")

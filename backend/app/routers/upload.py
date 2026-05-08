@@ -168,9 +168,13 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
     filepath   = _save_upload(session_id, file.filename, file_bytes)
     file_hash  = hashlib.sha256(file_bytes).hexdigest()
 
+    # Strip None values from col_map — pipeline's add_weather_features skips missing keys,
+    # but a key present with None value causes it to look up df[None] and crash.
+    clean_col_map = {k: v for k, v in detection["detected"].items() if v is not None}
+
     _sessions[session_id] = {
         "df":             df,
-        "detected_cols":  detection["detected"],
+        "detected_cols":  clean_col_map,
         "detection_mode": detection["detection_mode"],
         "filename":       file.filename,
         "filepath":       filepath,

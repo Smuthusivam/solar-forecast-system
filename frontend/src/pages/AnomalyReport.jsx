@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, BarChart, Bar, RadarChart,
-  Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ScatterChart,
+  Legend, ResponsiveContainer, BarChart, Bar, ScatterChart,
   Scatter, ZAxis, Cell,
 } from "recharts";
 import {
@@ -144,16 +143,6 @@ export default function AnomalyReport({ datasetId }) {
       "RMSE (Corrected)": modelComp.corrected?.[m]?.rmse,
       "MAE (Original)":   modelComp.original[m]?.mae,
       "MAE (Corrected)":  modelComp.corrected?.[m]?.mae,
-    }));
-  })();
-
-  // Radar data — R² scores per model
-  const radarData = (() => {
-    if (!modelComp?.original) return [];
-    return Object.keys(modelComp.original).map((m) => ({
-      model:     m,
-      "R² Before": +(modelComp.original[m]?.r2 * 100).toFixed(2),
-      "R² After":  +(modelComp.corrected?.[m]?.r2 * 100).toFixed(2),
     }));
   })();
 
@@ -613,23 +602,6 @@ export default function AnomalyReport({ datasetId }) {
                 </ResponsiveContainer>
               </Section>
             </div>
-          )}
-
-          {/* ── Chart 6: Radar — R² per model ── */}
-          {radarData.length > 0 && (
-            <Section title="Model R² Score Comparison" subtitle="Higher = better fit — before vs after correction">
-              <ResponsiveContainer width="100%" height={280}>
-                <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-                  <PolarGrid />
-                  <PolarAngleAxis dataKey="model" tick={{ fontSize: 12 }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
-                  <Radar name="R² Before" dataKey="R² Before" stroke="#f97316" fill="#f97316" fillOpacity={0.25} />
-                  <Radar name="R² After"  dataKey="R² After"  stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} />
-                  <Legend />
-                  <Tooltip formatter={(v) => [`${v}%`]} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </Section>
           )}
 
           {/* ── Per-model full metrics table ── */}

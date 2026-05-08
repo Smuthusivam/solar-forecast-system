@@ -53,17 +53,27 @@ def add_rolling_features(df: pd.DataFrame, target_col: str = "irradiance") -> pd
 
 def add_weather_features(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
     # Build physics-informed interaction features when weather columns are present.
+    # After preprocessing, columns are already renamed to standard names, so we
+    # check both the standard name directly AND via col_map for flexibility.
     df = df.copy()
 
-    cloud_col = col_map.get("cloud_cover")
-    temp_col  = col_map.get("temperature")
-    hum_col   = col_map.get("humidity")
+    def _find_col(standard_name: str) -> str | None:
+        if standard_name in df.columns:
+            return standard_name
+        mapped = col_map.get(standard_name)
+        if mapped and mapped in df.columns:
+            return mapped
+        return None
 
-    if cloud_col and cloud_col in df.columns:
+    cloud_col = _find_col("cloud_cover")
+    temp_col  = _find_col("temperature")
+    hum_col   = _find_col("humidity")
+
+    if cloud_col:
         df["cloud_clearness"] = 1 - (df[cloud_col] / 100).clip(0, 1)
 
-    if temp_col and hum_col and temp_col in df.columns and hum_col in df.columns:
-        humidity_safe = df[hum_col].clip(lower=1)  # avoid division by zero
+    if temp_col and hum_col:
+        humidity_safe = df[hum_col].clip(lower=1)
         df["temp_humidity_ratio"] = df[temp_col] / humidity_safe
 
     return df

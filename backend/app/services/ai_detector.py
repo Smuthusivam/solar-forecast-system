@@ -51,6 +51,7 @@ COLUMN_ALIASES: dict[str, list[str]] = {
         "cloud_cover", "cloudcover", "clouds", "cloud", "cc",
         "cloud_fraction", "oktas", "total_cloud_cover", "tcc",
         "cloudiness", "nebulosity",
+        # Intentionally excludes "cloud_type" — it's a categorical code, not a percentage
     ],
     "sunshine_hours": [
         "sunshine_hours", "sunshine", "sun_hours", "ssh",
@@ -76,19 +77,28 @@ Column names found in the CSV:
 Sample data (first 3 rows):
 {sample_str}
 
-CRITICAL: Never return unit strings like "w/m2", "%", "c", "m/s" as column names.
-These are unit labels, not column names. Always return the actual column header.
-For NSRDB: map GHI → irradiance, Temperature → temperature,
-Relative Humidity → humidity, Wind Speed → wind_speed.
-timestamp should be null if date is split into Year/Month/Day/Hour columns.
 Your task: identify which column corresponds to each physical variable.
 
-CRITICAL RULES:
-- Column names containing "Units" (e.g. "GHI Units") are NOT data columns — ignore them
-- Look for columns named exactly: GHI, DNI, DHI, Temperature, Relative Humidity, Wind Speed
-- For NSRDB format: the real data columns are GHI, Temperature, Relative Humidity, Wind Speed
-- DC_POWER or AC_POWER map to irradiance if no GHI column exists
-- Return actual column names, never unit labels like "w/m2" or "%"
+IRRADIANCE RULES (most important):
+- GHI (Global Horizontal Irradiance) is the correct irradiance column — map it to irradiance
+- DNI and DHI are NOT irradiance — do NOT map them to irradiance
+- Only use DNI/DHI if GHI is completely absent
+- DC_POWER or AC_POWER map to irradiance only if no GHI/DNI/DHI column exists
+
+CLOUD COVER RULES:
+- Only map to cloud_cover if the column contains percentage values (0-100%) or fractional values (0-1)
+- "Cloud Type" is a categorical code (0-9 integers), NOT cloud cover percentage — map it to null
+- Valid cloud cover columns: "Cloud Cover", "Clouds", "cloud_fraction", "tcc", "oktas"
+
+TIMESTAMP RULES:
+- If the date is split into separate Year/Month/Day/Hour columns, set timestamp to null
+- The preprocessing pipeline handles NSRDB-style split date columns automatically
+
+GENERAL RULES:
+- Columns containing "Units" (e.g. "GHI Units") are metadata — ignore them
+- Never return unit strings like "w/m2", "%", "c", "m/s" as column names
+- Return actual column header names exactly as shown above
+- Use null if a variable is not present
 
 Return ONLY a JSON object with these exact keys:
 {{
@@ -103,11 +113,7 @@ Return ONLY a JSON object with these exact keys:
   "notes":           "<brief explanation>"
 }}
 
-Rules:
-- Use null if a variable is not present
-- confidence reflects your overall certainty
-- Column names must match exactly as given above
-- Return ONLY the JSON — no markdown, no backticks"""
+Return ONLY the JSON — no markdown, no backticks"""
 
 
 def _call_claude_api(prompt: str) -> dict[str, Any]:

@@ -4,7 +4,7 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Area, ComposedChart
 } from "recharts";
-import { exportCSV, exportPDF } from "../services/api";
+import { exportCSV } from "../services/api";
 import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { StatCard, Card, AlertBox, PageHeader } from "../components/ui";
 
@@ -144,12 +144,11 @@ function Dashboard() {
       };
     });
 
-  // ── Export handlers ────────────────────────────────────────────────────
-  async function handleExport(type) {
-    setExporting(type);
+  // ── Export handler ─────────────────────────────────────────────────────
+  async function handleExportCSV() {
+    setExporting("csv");
     try {
-      if (type === "csv") await exportCSV(result.session_id);
-      else                await exportPDF(result.session_id);
+      await exportCSV(result.session_id);
     } catch (err) {
       alert("Export failed: " + (err?.message || ""));
     } finally {
@@ -167,19 +166,11 @@ function Dashboard() {
         actions={[
           <button
             key="csv"
-            onClick={() => handleExport("csv")}
+            onClick={handleExportCSV}
             disabled={exporting !== null}
             className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
           >
-            {exporting === "csv" ? "..." : "CSV"}
-          </button>,
-          <button
-            key="pdf"
-            onClick={() => handleExport("pdf")}
-            disabled={exporting !== null}
-            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {exporting === "pdf" ? "..." : "PDF"}
+            {exporting === "csv" ? "Exporting..." : "Export CSV"}
           </button>,
           <button
             key="models"

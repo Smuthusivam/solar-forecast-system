@@ -353,9 +353,8 @@ function Upload() {
                 <div>
                   <p className="font-semibold text-amber-800">No direct GHI column found</p>
                   <p className="text-sm text-amber-700 mt-1">
-                    Solar irradiance will be <strong>estimated</strong> from weather variables
-                    (temperature, humidity, cloud cover) using the Angstrom-Prescott model.
-                    Forecast accuracy will be lower than with a direct GHI measurement.
+                    No direct solar irradiance column was found. Irradiance values have been
+                    derived from your weather data, so forecast accuracy may be lower.
                     If your CSV does have a GHI column, check the column mapping in the
                     <strong> Columns</strong> tab.
                   </p>
@@ -505,7 +504,7 @@ function Upload() {
                   </div>
                   {result.detection_mode === "estimated" && (
                     <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                      No GHI/irradiance column found — solar irradiance will be <strong>estimated</strong> from weather variables using the Angstrom-Prescott model.
+                      No GHI/irradiance column found — irradiance values have been derived from your weather data.
                     </div>
                   )}
                 </Card>

@@ -242,7 +242,7 @@ def _build_result(
         detection_mode = "estimated"
         warnings.append(
             "No GHI/irradiance column found — solar irradiance will be estimated "
-            "from weather variables (Angstrom-Prescott model). "
+            "from your weather variables. "
             "Results will be less accurate than with a direct GHI measurement."
         )
 

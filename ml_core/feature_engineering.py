@@ -32,7 +32,11 @@ def add_lag_features(df: pd.DataFrame, target_col: str = "irradiance") -> pd.Dat
     # Add lagged irradiance values so the model can see what happened 1h, 24h, and 168h ago.
     df = df.copy()
 
+    # Only use lags that are likely to be populated given the dataset size.
+    # lag_168h (7 days) wipes out the first 168 rows on dropna() — skip it for small datasets.
     lags = [1, 2, 24, 48, 168]
+    if len(df) < 400:
+        lags = [1, 2, 24]
     for lag in lags:
         df[f"lag_{lag}h"] = df[target_col].shift(lag).fillna(0)
 
@@ -46,7 +50,7 @@ def add_rolling_features(df: pd.DataFrame, target_col: str = "irradiance") -> pd
     df["rolling_mean_3h"]  = df[target_col].rolling(window=3,  min_periods=1).mean()
     df["rolling_mean_24h"] = df[target_col].rolling(window=24, min_periods=1).mean()
     df["rolling_std_24h"]  = df[target_col].rolling(window=24, min_periods=1).std().fillna(0)
-    df["rolling_max_24h"]  = df[target_col].rolling(window=24, min_periods=1).max()
+    df["rolling_max_24h"]  = df[target_col].rolling(window=24, min_periods=1).max().fillna(0)
 
     return df
 

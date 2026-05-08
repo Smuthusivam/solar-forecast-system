@@ -564,6 +564,54 @@ export default function AnomalyReport({ datasetId }) {
 
         const step = Math.max(1, Math.floor(Math.max(origPoints.length, cmpPoints.length) / 200));
 
+        // Forecast comparison overlay — Actual vs Original Forecast vs Corrected Forecast
+        const forecastCompareData = origPoints
+          .filter((_, i) => i % step === 0)
+          .map((p, i) => ({
+            time:                p.timestamp.substring(5, 16).replace("T", " "),
+            Actual:              p.actual    != null ? parseFloat(p.actual.toFixed(1))               : null,
+            "Original Forecast": p.predicted != null ? parseFloat(p.predicted.toFixed(1))            : null,
+            "Corrected Forecast": cmpPoints[i * step]?.predicted != null
+              ? parseFloat(cmpPoints[i * step].predicted.toFixed(1)) : null,
+          }));
+
+        // Absolute error over time
+        const errorData = origPoints
+          .filter((_, i) => i % step === 0)
+          .map((p, i) => {
+            const cmpPred = cmpPoints[i * step]?.predicted;
+            return {
+              time:             p.timestamp.substring(5, 16).replace("T", " "),
+              "Original Error": p.actual != null && p.predicted != null
+                ? parseFloat(Math.abs(p.actual - p.predicted).toFixed(1)) : null,
+              "Corrected Error": p.actual != null && cmpPred != null
+                ? parseFloat(Math.abs(p.actual - cmpPred).toFixed(1)) : null,
+            };
+          });
+
+        // Scatter data — actual vs predicted for each model version
+        const scatterOrig = origPoints
+          .filter((_, i) => i % step === 0)
+          .map(p => ({ actual: p.actual, predicted: p.predicted }))
+          .filter(p => p.actual != null && p.predicted != null);
+
+        const scatterCorr = cmpPoints
+          .filter((_, i) => i % step === 0)
+          .map(p => ({ actual: p.actual, predicted: p.predicted }))
+          .filter(p => p.actual != null && p.predicted != null);
+
+        // Per-model RMSE / MAE bar data
+        const modelBarData = origModels.map(om => {
+          const cm = cmpModels.find(c => c.model_name === om.model_name);
+          return {
+            name:                    om.model_name,
+            "RMSE (Original)":       parseFloat(om.metrics.rmse.toFixed(4)),
+            "RMSE (Corrected)":      cm ? parseFloat(cm.metrics.rmse.toFixed(4)) : null,
+            "MAE (Original)":        parseFloat(om.metrics.mae.toFixed(4)),
+            "MAE (Corrected)":       cm ? parseFloat(cm.metrics.mae.toFixed(4))  : null,
+          };
+        });
+
         // Per-model chart data: before predictions come from origModels, after from cmpModels
         const modelChartData = (() => {
           if (!origModels.length || !origPoints.length) return {};
@@ -642,6 +690,110 @@ export default function AnomalyReport({ datasetId }) {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Forecast comparison line chart */}
+            {forecastCompareData.length > 0 && (
+              <Section
+                title="Forecast Comparison — Original vs Corrected vs Actual"
+                subtitle="How model predictions shift after AI correction"
+              >
+                <ResponsiveContainer width="100%" height={320}>
+                  <LineChart data={forecastCompareData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="time" tick={{ fontSize: 9 }}
+                      interval={Math.floor(forecastCompareData.length / 8)} />
+                    <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                    <Tooltip contentStyle={{ fontSize: 11 }}
+                      formatter={(v) => v != null ? [`${v} W/m²`] : ["—"]} />
+                    <Legend />
+                    <Line type="monotone" dataKey="Actual"             stroke="#6b7280" strokeWidth={2}   dot={false} />
+                    <Line type="monotone" dataKey="Corrected Forecast" stroke="#8b5cf6" strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="Original Forecast"  stroke="#f97316" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Section>
+            )}
+
+            {/* Absolute error over time */}
+            {errorData.length > 0 && (
+              <Section
+                title="Absolute Prediction Error Over Time"
+                subtitle="Lower is better — gap between forecast and actual readings"
+              >
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={errorData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="time" tick={{ fontSize: 9 }}
+                      interval={Math.floor(errorData.length / 8)} />
+                    <YAxis tick={{ fontSize: 11 }} unit=" W/m²" />
+                    <Tooltip contentStyle={{ fontSize: 11 }}
+                      formatter={(v) => v != null ? [`${v} W/m²`] : ["—"]} />
+                    <Legend />
+                    <Line type="monotone" dataKey="Corrected Error" stroke="#8b5cf6" strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="Original Error"  stroke="#f97316" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Section>
+            )}
+
+            {/* Scatter: predicted vs actual — side by side */}
+            {(scatterOrig.length > 0 || scatterCorr.length > 0) && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Section title="Original: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="actual"    name="Actual"    unit=" W/m²" tick={{ fontSize: 10 }}
+                        label={{ value: "Actual",    position: "insideBottom", offset: -4, fontSize: 11 }} />
+                      <YAxis dataKey="predicted" name="Predicted" unit=" W/m²" tick={{ fontSize: 10 }}
+                        label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                      <ZAxis range={[20, 20]} />
+                      <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} W/m²`]} />
+                      <Scatter data={scatterOrig} fill="#f97316" fillOpacity={0.5} name="Original" />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </Section>
+
+                <Section title="Corrected: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="actual"    name="Actual"    unit=" W/m²" tick={{ fontSize: 10 }}
+                        label={{ value: "Actual",    position: "insideBottom", offset: -4, fontSize: 11 }} />
+                      <YAxis dataKey="predicted" name="Predicted" unit=" W/m²" tick={{ fontSize: 10 }}
+                        label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                      <ZAxis range={[20, 20]} />
+                      <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} W/m²`]} />
+                      <Scatter data={scatterCorr} fill="#8b5cf6" fillOpacity={0.5} name="Corrected" />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </Section>
+              </div>
+            )}
+
+            {/* Per-model RMSE / MAE bar charts */}
+            {modelBarData.length > 0 && cmpModels.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {[
+                  { key: "RMSE", sub: "Lower RMSE = better" },
+                  { key: "MAE",  sub: "Lower MAE = better"  },
+                ].map(({ key, sub }) => (
+                  <Section key={key} title={`Per-Model ${key}: Before vs After`} subtitle={sub}>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={modelBarData} layout="vertical" margin={{ left: 60 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} unit=" W/m²" />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={55} />
+                        <Tooltip formatter={(v) => v != null ? [`${v} W/m²`] : ["—"]} />
+                        <Legend />
+                        <Bar dataKey={`${key} (Corrected)`} fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey={`${key} (Original)`}  fill="#f97316" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Section>
+                ))}
               </div>
             )}
 

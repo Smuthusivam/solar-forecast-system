@@ -1,4 +1,4 @@
-# Handles CSV parsing, cleaning, and GHI estimation before feature engineering.
+# Handles CSV parsing, cleaning, and feature engineering preparation.
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import io
 import logging
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -23,9 +22,6 @@ SUN_MIN,   SUN_MAX   =   0.0,  24.0
 
 # Need at least 2 days of hourly data to train reliably
 MIN_ROWS = 48
-
-SOLAR_CONSTANT = 1000.0  # W/m² at Earth's surface
-
 
 def parse_csv(file_bytes: bytes) -> pd.DataFrame:
     # Try multiple encodings and separators; handles NSRDB multi-row headers too.
@@ -295,54 +291,6 @@ def _fill_missing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _estimate_ghi(df: pd.DataFrame) -> pd.DataFrame:
-    # Estimate GHI using a modified Angstrom-Prescott model when no irradiance column exists.
-    logger.info("Estimating GHI from weather variables (Angstrom-Prescott model)")
-
-    n     = len(df)
-    hours = df.index.hour
-    doy   = df.index.dayofyear  # day of year for seasonal daylight length adjustment
-
-    # Seasonal daylight adjustment — days are longer in summer (DOY ~172) shorter in winter
-    # Daylight hours range roughly 8–16h depending on season (temperate latitude approximation)
-    daylight_hours = 12 + 4 * np.sin(2 * np.pi * (doy - 80) / 365)
-    sunrise = 12 - daylight_hours / 2
-    sunset  = 12 + daylight_hours / 2
-
-    # Solar elevation proxy — sine curve between sunrise and sunset, zero otherwise
-    solar_angle = np.where(
-        (hours >= sunrise) & (hours <= sunset),
-        np.sin(np.pi * (hours - sunrise) / daylight_hours),
-        0.0,
-    ).clip(0)
-
-    daytime_mask = solar_angle > 0
-    clearness    = np.full(n, 0.75)
-
-    if "cloud_cover" in df.columns:
-        cloud_fraction = np.clip(df["cloud_cover"].values / 100.0, 0.0, 1.0)
-        clearness     *= (1.0 - 0.75 * cloud_fraction ** 3.4)
-        logger.info("Cloud cover adjustment applied")
-
-    if "humidity" in df.columns:
-        rh_fraction = np.clip(df["humidity"].values / 100.0, 0.0, 1.0)
-        clearness  *= (1.0 - 0.1 * rh_fraction)
-        logger.info("Humidity adjustment applied")
-
-    if "sunshine_hours" in df.columns:
-        sun_fraction = np.clip(df["sunshine_hours"].values / 12.0, 0.0, 1.0)
-        clearness   *= (0.25 + 0.75 * sun_fraction)
-        logger.info("Sunshine hours adjustment applied")
-
-    ghi = np.clip(clearness * SOLAR_CONSTANT * solar_angle, IRRADIANCE_MIN, IRRADIANCE_MAX)
-    df["irradiance"] = ghi
-
-    estimated_mean = ghi[daytime_mask].mean() if daytime_mask.any() else 0
-    logger.info("GHI estimated: mean daytime value = %.1f W/m²", estimated_mean)
-
-    return df
-
-
 def preprocess(
     file_bytes:     bytes,
     detected_cols:  dict[str, str | None],
@@ -352,9 +300,9 @@ def preprocess(
     Full preprocessing pipeline — parse, clean, and return a model-ready DataFrame.
 
     Args:
-        file_bytes:     Raw bytes from the uploaded CSV
-        detected_cols:  Column mapping from ai_detector.detect_columns()
-        detection_mode: "direct" (irradiance present) or "estimated" (derive from weather)
+        file_bytes:    Raw bytes from the uploaded CSV
+        detected_cols: Column mapping from ai_detector.detect_columns()
+        detection_mode: Always "direct" — irradiance column must be present in the CSV
 
     Returns:
         (df, meta) — cleaned DataFrame with DatetimeIndex, plus processing stats
@@ -362,7 +310,7 @@ def preprocess(
     Raises:
         ValueError if the data is unrecoverable (empty, bad timestamps, etc.)
     """
-    logger.info("Preprocessing pipeline started (mode=%s)", detection_mode)
+    logger.info("Preprocessing pipeline started")
 
     # Step 1: parse the raw CSV bytes
     df = parse_csv(file_bytes)
@@ -411,17 +359,13 @@ def preprocess(
     df = _coerce_numeric(df)
     df = _clip_to_bounds(df)
 
-    # Step 7: estimate GHI from weather variables if no irradiance column was found
-    if detection_mode == "estimated" and "irradiance" not in df.columns:
-        df = _estimate_ghi(df)
-
-    # Step 8: fill remaining gaps
+    # Step 7: fill remaining gaps
     df = _fill_missing(df)
 
-    # Step 9: make sure we ended up with something usable
+    # Step 8: make sure we ended up with something usable
     if "irradiance" not in df.columns:
         raise ValueError(
-            "No irradiance column found after preprocessing. Please upload a CSV containing a GHI/irradiance column or at least one weather variable (temperature, cloud cover, or humidity)."
+            "No irradiance column found. Please upload a CSV that contains a GHI or irradiance column."
         )
 
     if len(df) < MIN_ROWS:
@@ -432,7 +376,7 @@ def preprocess(
 
     rows_clean = len(df)
 
-    # Step 10: build a summary for the API response
+    # Step 9: build a summary for the API response
     date_range_days = (df.index[-1] - df.index[0]).days + 1
     irr             = df["irradiance"]
     hourly_avg = (
@@ -477,7 +421,6 @@ def preprocess(
         "date_range_days":   date_range_days,
         "date_start":        str(df.index[0]),
         "date_end":          str(df.index[-1]),
-        "detection_mode":    detection_mode,
         "hourly_avg":         hourly_avg,
         "weekday_avg":        weekday_avg,
         "monthly_avg":        monthly_avg,

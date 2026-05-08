@@ -26,19 +26,12 @@ for p in (ML_CORE_ROOT, PROJECT_ROOT):
 # ── CSV builders ──────────────────────────────────────────────────────────────
 
 def make_csv_bytes(rows: int = 72, with_irradiance: bool = True) -> bytes:
-    """
-    Build a minimal well-formed CSV in memory.
-
-    Parameters
-    ----------
-    rows            Number of hourly data rows (≥48 satisfies MIN_ROWS).
-    with_irradiance Include an irradiance column; set False to test GHI estimation path.
-    """
+    """Build a minimal well-formed CSV in memory."""
     buf  = io.StringIO()
     w    = csv.writer(buf)
-    cols = ["timestamp", "temperature", "humidity", "wind_speed", "cloud_cover"]
-    if with_irradiance:
-        cols.insert(1, "irradiance")
+    cols = ["timestamp", "irradiance", "temperature", "humidity", "wind_speed", "cloud_cover"]
+    if not with_irradiance:
+        cols.remove("irradiance")
     w.writerow(cols)
 
     start = datetime(2024, 6, 1, 0, 0)
@@ -46,9 +39,9 @@ def make_csv_bytes(rows: int = 72, with_irradiance: bool = True) -> bytes:
         ts   = start + timedelta(hours=i)
         hour = ts.hour
         irr  = max(0.0, 600.0 * (1 - abs(12 - hour) / 12))
-        row  = [ts.isoformat(), round(20 + hour * 0.1, 2), 55.0, 3.0, 20.0]
-        if with_irradiance:
-            row.insert(1, round(irr, 2))
+        row  = [ts.isoformat(), round(irr, 2), round(20 + hour * 0.1, 2), 55.0, 3.0, 20.0]
+        if not with_irradiance:
+            row.pop(1)
         w.writerow(row)
 
     return buf.getvalue().encode()

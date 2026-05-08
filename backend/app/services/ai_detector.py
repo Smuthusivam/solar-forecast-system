@@ -222,28 +222,12 @@ def _build_result(
                 )
             detected[field] = None
 
-    # "direct" if irradiance column found; "estimated" if GHI must be derived from weather
     if detected["irradiance"]:
         detection_mode = "direct"
     else:
-        # No irradiance — check if we have enough weather columns to estimate GHI
-        has_weather = any(
-            detected.get(v) for v in ["temperature", "humidity", "cloud_cover"]
-        )
-
-        if not has_weather:
-            # Nothing useful — reject immediately rather than producing meaningless results
-            raise ValueError(
-                "This dataset does not appear to contain solar irradiance or weather data. "
-                "Please upload a CSV with at least one of: a GHI/irradiance column, "
-                "temperature, humidity, or cloud cover."
-            )
-
-        detection_mode = "estimated"
-        warnings.append(
-            "No GHI/irradiance column found — solar irradiance will be estimated "
-            "from your weather variables. "
-            "Results will be less accurate than with a direct GHI measurement."
+        raise ValueError(
+            "No GHI/irradiance column found. "
+            "Please upload a CSV that contains a direct solar irradiance or GHI column."
         )
 
     confidence = float(mapping.get("confidence", LOW_CONFIDENCE))

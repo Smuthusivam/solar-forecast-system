@@ -12,9 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class DetectionMode(str, Enum):
-    # "direct" = irradiance column found; "estimated" = GHI derived from weather vars.
-    DIRECT    = "direct"
-    ESTIMATED = "estimated"
+    DIRECT = "direct"
 
 
 class AnomalySeverity(str, Enum):

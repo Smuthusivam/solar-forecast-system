@@ -2,8 +2,7 @@
 test_preprocessing.py — Unit tests for ml_core/preprocessing.py
 
 Covers: parse_csv, standardise_columns, parse_timestamps,
-        _coerce_numeric, _clip_to_bounds, _fill_missing,
-        _estimate_ghi, preprocess
+        _coerce_numeric, _clip_to_bounds, _fill_missing, preprocess
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from ml_core.preprocessing import (
     MIN_ROWS,
     _clip_to_bounds,
     _coerce_numeric,
-    _estimate_ghi,
     _fill_missing,
     parse_csv,
     parse_timestamps,
@@ -37,16 +35,6 @@ def _indexed_df(data: dict) -> pd.DataFrame:
     n   = max(len(v) for v in data.values())
     idx = pd.date_range("2024-01-01", periods=n, freq="h")
     return pd.DataFrame(data, index=idx)
-
-
-def _weather_df(n: int = 96) -> pd.DataFrame:
-    """Return a weather-only DataFrame (no irradiance) for GHI estimation tests."""
-    idx = pd.date_range("2024-06-01", periods=n, freq="h")
-    return pd.DataFrame({
-        "temperature": np.ones(n) * 25,
-        "humidity":    np.ones(n) * 50,
-        "cloud_cover": np.ones(n) * 20,
-    }, index=idx)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -254,39 +242,6 @@ class TestFillMissing:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# _estimate_ghi
-# ══════════════════════════════════════════════════════════════════════════════
-
-class TestEstimateGhi:
-
-    def test_adds_irradiance_column(self):
-        """_estimate_ghi must create an 'irradiance' column in the DataFrame."""
-        assert "irradiance" in _estimate_ghi(_weather_df()).columns
-
-    def test_daytime_values_are_positive(self):
-        """Estimated irradiance at midday must be greater than zero."""
-        result = _estimate_ghi(_weather_df(n=24))
-        assert (result.between_time("10:00", "14:00")["irradiance"] > 0).any()
-
-    def test_nighttime_values_are_zero(self):
-        """Estimated irradiance between 1-4 AM must be zero."""
-        result = _estimate_ghi(_weather_df(n=24))
-        assert (result.between_time("01:00", "04:00")["irradiance"] == 0.0).all()
-
-    def test_values_within_physical_bounds(self):
-        """All estimated irradiance values must be within [0, 1400] W/m²."""
-        result = _estimate_ghi(_weather_df(n=96))
-        assert result["irradiance"].between(0.0, 1400.0).all()
-
-    def test_high_cloud_reduces_irradiance(self):
-        """High cloud cover (90%) should produce lower GHI than low cloud cover (10%)."""
-        idx       = pd.date_range("2024-06-01 10:00", periods=4, freq="h")
-        clear     = _estimate_ghi(pd.DataFrame({"cloud_cover": [10.0] * 4}, index=idx))
-        cloudy    = _estimate_ghi(pd.DataFrame({"cloud_cover": [90.0] * 4}, index=idx))
-        assert clear["irradiance"].mean() > cloudy["irradiance"].mean()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # preprocess  (full pipeline)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -294,12 +249,6 @@ _DIRECT_MAP = {
     "irradiance": "irradiance", "temperature": "temperature",
     "humidity": "humidity", "wind_speed": "wind_speed",
     "cloud_cover": "cloud_cover", "timestamp": "timestamp",
-}
-
-_ESTIMATED_MAP = {
-    "temperature": "temperature", "humidity": "humidity",
-    "wind_speed": "wind_speed", "cloud_cover": "cloud_cover",
-    "timestamp": "timestamp",
 }
 
 
@@ -319,13 +268,8 @@ class TestPreprocess:
                     "irradiance_min", "date_range_days", "date_start", "date_end"):
             assert key in meta, f"Missing meta key: {key}"
 
-    def test_estimated_mode_adds_irradiance(self):
-        """preprocess in 'estimated' mode must derive an irradiance column from weather vars."""
-        df, _ = preprocess(make_csv_bytes(rows=72, with_irradiance=False), _ESTIMATED_MAP, "estimated")
-        assert "irradiance" in df.columns
-
-    def test_raises_when_irradiance_missing_in_direct_mode(self):
-        """preprocess must raise ValueError if mode='direct' but no irradiance column maps."""
+    def test_raises_when_irradiance_missing(self):
+        """preprocess must raise ValueError when no irradiance column is present."""
         with pytest.raises(ValueError):
             preprocess(make_csv_bytes(rows=72, with_irradiance=False),
                        {"temperature": "temperature", "timestamp": "timestamp"}, "direct")

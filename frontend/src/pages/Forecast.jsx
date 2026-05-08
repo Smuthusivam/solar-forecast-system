@@ -8,7 +8,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
 } from "recharts";
 import { runForecast, runForecastFromCorrected } from "../services/api";
-import { StatCard, TabNav } from "../components/ui";
+import { StatCard, TabNav, PageHeader } from "../components/ui";
 
 // ── Preset horizon options ────────────────────────────────────────────────────
 const PRESETS = [
@@ -111,34 +111,42 @@ export default function Forecast() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Future Forecast</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+      <PageHeader
+        title="Future Forecast"
+        subtitle={
+          <>
             {filename} — predict irradiance beyond your data
             {fromCorrection && (
-              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">
+              <span className="ml-2 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">
                 Using AI-corrected data
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => navigate("/history")}
-            className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+          </>
+        }
+        actions={[
+          <button
+            key="history"
+            onClick={() => navigate("/history")}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
             View History
-          </button>
-          <button onClick={() => navigate("/anomalies", { state: { result: location.state?.result || { session_id: sessionId, filename }, forecast: location.state?.forecast } })}
-            className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+          </button>,
+          <button
+            key="anomaly"
+            onClick={() => navigate("/anomalies", { state: { result: location.state?.result || { session_id: sessionId, filename }, forecast: location.state?.forecast } })}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
             Open Anomaly
-          </button>
-          <button onClick={() => navigate(-1)}
-            className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-            ← Back
-          </button>
-        </div>
-      </div>
+          </button>,
+          <button
+            key="back"
+            onClick={() => navigate(-1)}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Back
+          </button>,
+        ]}
+      />
 
       {fromCorrection && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-sm text-purple-800">

@@ -5,13 +5,13 @@ import { NavLink } from "react-router-dom";
 // ── StatCard ──────────────────────────────────────────────────────────────────
 export function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
   return (
-    <div className="bg-white rounded-xl shadow p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color}`}>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className={`mt-2 text-2xl font-semibold ${color}`}>
         {value}
-        {unit && <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>}
+        {unit && <span className="ml-1 text-sm font-normal text-slate-400">{unit}</span>}
       </p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }
@@ -19,15 +19,15 @@ export function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
 // ── Card ──────────────────────────────────────────────────────────────────────
 export function Card({ title, subtitle, children, right }) {
   return (
-    <div className="bg-white rounded-xl shadow p-6 mb-6">
-      <div className="flex items-start justify-between mb-2">
+    <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-700">{title}</h2>
-          {subtitle && <p className="text-sm text-gray-400">{subtitle}</p>}
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          {subtitle && <p className="text-sm text-slate-500">{subtitle}</p>}
         </div>
         {right}
       </div>
-      <div className="mt-3">{children}</div>
+      <div>{children}</div>
     </div>
   );
 }
@@ -35,10 +35,10 @@ export function Card({ title, subtitle, children, right }) {
 // ── Section (border variant used in AnomalyReport / Forecast) ─────────────────
 export function Section({ title, subtitle, children }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-      <div className="px-5 py-4 border-b border-gray-100">
-        <h3 className="font-semibold text-gray-900 text-base">{title}</h3>
-        {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+    <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 px-5 py-4">
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -48,15 +48,15 @@ export function Section({ title, subtitle, children }) {
 // ── TabNav ────────────────────────────────────────────────────────────────────
 export function TabNav({ tabs, active, onChange }) {
   return (
-    <div className="flex gap-1 border-b border-gray-200 mb-6">
+    <div className="mb-6 flex gap-1 border-b border-slate-200">
       {tabs.map(t => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
-          className={`px-4 py-2 text-sm font-medium transition border-b-2
+          className={`border-b-2 px-4 py-2 text-sm font-medium transition
             ${active === t.id
-              ? "text-blue-600 border-blue-600"
-              : "text-gray-500 border-transparent hover:text-gray-800"}`}
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-500 hover:text-slate-900"}`}
         >
           {t.label}
         </button>
@@ -68,12 +68,12 @@ export function TabNav({ tabs, active, onChange }) {
 // ── AlertBox ──────────────────────────────────────────────────────────────────
 export function AlertBox({ children, variant = "error" }) {
   const styles = {
-    error:   "bg-red-50 border-red-200 text-red-600",
-    warning: "bg-amber-50 border-amber-200 text-amber-800",
-    info:    "bg-blue-50 border-blue-200 text-blue-700",
+    error:   "border-red-200 bg-red-50 text-red-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-900",
+    info:    "border-slate-200 bg-slate-50 text-slate-700",
   };
   return (
-    <div className={`border rounded-xl p-4 mb-6 text-sm ${styles[variant]}`}>
+    <div className={`mb-6 rounded-2xl border p-4 text-sm shadow-sm ${styles[variant]}`}>
       {children}
     </div>
   );
@@ -82,12 +82,15 @@ export function AlertBox({ children, variant = "error" }) {
 // ── PageHeader ────────────────────────────────────────────────────────────────
 export function PageHeader({ title, subtitle, actions }) {
   return (
-    <div className="flex items-center justify-between mb-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-400 mt-1">{subtitle}</p>}
+    <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 px-5 py-4 shadow-sm backdrop-blur">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Solar Forecast System</p>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
     </div>
   );
 }
@@ -141,13 +144,13 @@ export function MetricCard({ label, original, corrected, higherIsBetter = false 
   const isImproved = higherIsBetter ? corrected > original : corrected < original;
   const pct = original !== 0 ? Math.abs((corrected - original) / original * 100) : 0;
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-2">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold text-gray-900">{corrected?.toFixed(3)}</span>
-        <span className="text-sm text-gray-400 line-through">{original?.toFixed(3)}</span>
+        <span className="text-2xl font-semibold text-slate-900">{corrected?.toFixed(3)}</span>
+        <span className="text-sm text-slate-400 line-through">{original?.toFixed(3)}</span>
       </div>
-      <div className={`flex items-center gap-1 text-sm font-semibold ${isImproved ? "text-green-600" : "text-red-500"}`}>
+      <div className={`flex items-center gap-1 text-sm font-semibold ${isImproved ? "text-emerald-600" : "text-rose-500"}`}>
         <span>{isImproved ? "▼" : "▲"}</span>
         <span>{pct.toFixed(2)}% {isImproved ? "improvement" : "degraded"}</span>
       </div>

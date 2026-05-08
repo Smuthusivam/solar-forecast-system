@@ -18,6 +18,7 @@ import {
 import {
   Section, TabNav, MetricCard, AlertBox,
   SeverityBadge, ConfidenceBadge, SourceBadge, fmtWm2,
+  PageHeader,
 } from "../components/ui";
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -173,60 +174,61 @@ export default function AnomalyReport({ datasetId }) {
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
 
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
+      <PageHeader
+        title="Anomaly Report"
+        subtitle="Detection, validation & AI-assisted correction"
+        actions={[
           <button
+            key="compare"
             onClick={() => navigate("/compare", { state: { forecast, result } })}
-            className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition"
-            title="Back to Models"
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
           >
-            ←
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Anomaly Report</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Detection, validation &amp; AI-assisted correction</p>
-          </div>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          {correctionResult && (
-            <>
-              <a
-                href={getCorrectedCSVUrl(correctionResult.session_id)}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
-              >
-                Download corrected CSV
-              </a>
-              <button
-                onClick={() => downloadComparisonCSV(correctionResult)}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
-              >
-                Download comparison CSV
-              </button>
-              <button
-                onClick={() => navigate("/forecast", {
-                  state: {
-                    correctionSessionId: correctionResult.session_id,
-                    sessionId,
-                    filename: result?.filename || "corrected dataset",
-                    fromCorrection: true,
-                  }
-                })}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
-              >
-                Open forecast
-              </button>
-            </>
-          )}
+            Model Comparison
+          </button>,
+          correctionResult && (
+            <a
+              key="download-csv"
+              href={getCorrectedCSVUrl(correctionResult.session_id)}
+              className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+            >
+              Corrected CSV
+            </a>
+          ),
+          correctionResult && (
+            <button
+              key="download-compare"
+              onClick={() => downloadComparisonCSV(correctionResult)}
+              className="rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100"
+            >
+              Comparison CSV
+            </button>
+          ),
+          correctionResult && (
+            <button
+              key="forecast"
+              onClick={() => navigate("/forecast", {
+                state: {
+                  correctionSessionId: correctionResult.session_id,
+                  sessionId,
+                  filename: result?.filename || "corrected dataset",
+                  fromCorrection: true,
+                }
+              })}
+              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Open Forecast
+            </button>
+          ),
           <button
+            key="run"
             onClick={handleRunCorrection}
             disabled={loadingCorrection || loadingAnomalies}
-            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loadingCorrection ? "Running correction..." : "Run correction"}
-          </button>
-        </div>
-      </div>
+          </button>,
+        ].filter(Boolean)}
+      />
 
       {correctionError && (
         <AlertBox>Correction failed: {correctionError}</AlertBox>
@@ -550,7 +552,7 @@ export default function AnomalyReport({ datasetId }) {
         <div className="flex justify-end">
           <button
             onClick={() => navigate("/compare", { state: { forecast, result } })}
-            className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 transition"
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
           >
             Back to Model Comparison
           </button>

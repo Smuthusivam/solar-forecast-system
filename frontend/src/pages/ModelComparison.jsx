@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, BarChart, Bar, Cell,
   ReferenceLine
 } from "recharts";
-import { Card } from "../components/ui";
+import { Card, PageHeader } from "../components/ui";
 
 const MODEL_COLORS = {
   XGBoost:  "#3b82f6",
@@ -124,25 +124,26 @@ function ModelComparison() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Model Comparison</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            XGBoost vs LightGBM — train + test comparison
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => navigate("/dashboard", { state: { forecast, result } })}
-            className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
-            ← Dashboard
-          </button>
-          <button onClick={() => navigate(`/anomalies?session_id=${result.session_id}`, { state: { forecast, result } })}
-            className="border border-orange-300 text-orange-600 px-4 py-2 rounded-lg text-sm hover:bg-orange-50">
-            Anomalies →
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Model Comparison"
+        subtitle="XGBoost vs LightGBM — train + test comparison"
+        actions={[
+          <button
+            key="dashboard"
+            onClick={() => navigate("/dashboard", { state: { forecast, result } })}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Dashboard
+          </button>,
+          <button
+            key="anomalies"
+            onClick={() => navigate(`/anomalies?session_id=${result.session_id}`, { state: { forecast, result } })}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Anomalies
+          </button>,
+        ]}
+      />
 
       {/* Best model banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center gap-4">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { getHistory, getForecastPoints } from "../services/api";
-import { R2Badge, AlertBox } from "../components/ui";
+import { R2Badge, AlertBox, PageHeader } from "../components/ui";
 
 const MODE_COLORS = {
   direct:    { bg: "bg-green-100",  text: "text-green-700"  },
@@ -71,8 +71,8 @@ function History() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-4xl mb-4 animate-spin">📋</div>
-          <p className="text-gray-500">Loading forecast history...</p>
+          <div className="mb-4 text-4xl animate-spin">📋</div>
+          <p className="text-slate-500">Loading forecast history...</p>
         </div>
       </div>
     );
@@ -81,66 +81,64 @@ function History() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Forecast History</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            All past forecast runs stored in the database
-          </p>
-        </div>
-        <button
-          onClick={() => navigate("/")}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
-        >
-          + New Forecast
-        </button>
-      </div>
+      <PageHeader
+        title="Forecast History"
+        subtitle="All past forecast runs stored in the database"
+        actions={[
+          <button
+            key="new-forecast"
+            onClick={() => navigate("/")}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            + New Forecast
+          </button>,
+        ]}
+      />
 
       {error && <AlertBox>{error}</AlertBox>}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Total Runs</p>
-          <p className="text-2xl font-bold text-blue-600 mt-1">{totalRuns}</p>
-          <p className="text-xs text-gray-400 mt-1">forecast sessions</p>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Total Runs</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{totalRuns}</p>
+          <p className="mt-1 text-xs text-slate-500">forecast sessions</p>
         </div>
-        <div className="bg-white rounded-xl shadow p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Avg R²</p>
-          <p className={`text-2xl font-bold mt-1 ${avgR2 > 0.9 ? "text-green-600" : "text-orange-500"}`}>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Avg R²</p>
+          <p className={`mt-2 text-2xl font-semibold ${avgR2 > 0.9 ? "text-emerald-600" : "text-amber-600"}`}>
             {avgR2.toFixed(4)}
           </p>
-          <p className="text-xs text-gray-400 mt-1">across all runs</p>
+          <p className="mt-1 text-xs text-slate-500">across all runs</p>
         </div>
-        <div className="bg-white rounded-xl shadow p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Best Run</p>
-          <p className="text-2xl font-bold text-purple-600 mt-1">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Best Run</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">
             {bestRun ? bestRun.r2.toFixed(4) : "—"}
           </p>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="mt-1 text-xs text-slate-500">
             {bestRun ? bestRun.filename.slice(0, 20) : "no runs yet"}
           </p>
         </div>
-        <div className="bg-white rounded-xl shadow p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Total Rows Processed</p>
-          <p className="text-2xl font-bold text-indigo-600 mt-1">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Total Rows Processed</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">
             {totalRows.toLocaleString()}
           </p>
-          <p className="text-xs text-gray-400 mt-1">across all runs</p>
+          <p className="mt-1 text-xs text-slate-500">across all runs</p>
         </div>
       </div>
 
       {/* Empty state */}
       {runs.length === 0 && !error && (
-        <div className="bg-white rounded-xl shadow p-12 text-center">
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
           <p className="text-5xl mb-4">📭</p>
-          <p className="text-lg text-gray-500 mb-2">No forecast runs yet</p>
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="mb-2 text-lg text-slate-500">No forecast runs yet</p>
+          <p className="mb-6 text-sm text-slate-400">
             Upload a CSV and run a forecast to see it appear here
           </p>
           <button onClick={() => navigate("/")}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+            className="rounded-full bg-slate-900 px-6 py-2 text-white transition hover:bg-slate-800">
             Upload a File
           </button>
         </div>
@@ -148,57 +146,57 @@ function History() {
 
       {/* Table */}
       {runs.length > 0 && (
-        <div className="bg-white rounded-xl shadow">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
 
           {/* Search bar */}
-          <div className="p-4 border-b border-gray-100">
+          <div className="border-b border-slate-100 p-4">
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by filename or detection mode..."
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-xl border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
             />
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b text-gray-500">
-                  <th className="text-left p-3 cursor-pointer hover:text-blue-600"
+                <tr className="border-b bg-slate-50 text-slate-500">
+                  <th className="cursor-pointer p-3 text-left hover:text-slate-900"
                     onClick={() => toggleSort("run_id")}>
                     Run # <SortIcon col="run_id" />
                   </th>
-                  <th className="text-left p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-left hover:text-slate-900"
                     onClick={() => toggleSort("filename")}>
                     File <SortIcon col="filename" />
                   </th>
-                  <th className="text-center p-3">Mode</th>
-                  <th className="text-center p-3 cursor-pointer hover:text-blue-600"
+                  <th className="p-3 text-center">Mode</th>
+                  <th className="cursor-pointer p-3 text-center hover:text-slate-900"
                     onClick={() => toggleSort("horizon")}>
                     Horizon <SortIcon col="horizon" />
                   </th>
-                  <th className="text-right p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-right hover:text-slate-900"
                     onClick={() => toggleSort("rmse")}>
                     RMSE <SortIcon col="rmse" />
                   </th>
-                  <th className="text-right p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-right hover:text-slate-900"
                     onClick={() => toggleSort("mae")}>
                     MAE <SortIcon col="mae" />
                   </th>
-                  <th className="text-right p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-right hover:text-slate-900"
                     onClick={() => toggleSort("r2")}>
                     R² <SortIcon col="r2" />
                   </th>
-                  <th className="text-right p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-right hover:text-slate-900"
                     onClick={() => toggleSort("rows_processed")}>
                     Rows <SortIcon col="rows_processed" />
                   </th>
-                  <th className="text-right p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-right hover:text-slate-900"
                     onClick={() => toggleSort("anomaly_count")}>
                     Anomalies <SortIcon col="anomaly_count" />
                   </th>
-                  <th className="text-right p-3 cursor-pointer hover:text-blue-600"
+                  <th className="cursor-pointer p-3 text-right hover:text-slate-900"
                     onClick={() => toggleSort("created_at")}>
                     Date <SortIcon col="created_at" />
                   </th>
@@ -209,8 +207,8 @@ function History() {
                   const modeStyle = MODE_COLORS[run.detection_mode] || MODE_COLORS.direct;
                   return (
                     <tr key={run.run_id}
-                      className={`border-b hover:bg-blue-50 cursor-pointer transition
-                        ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}
+                      className={`border-b hover:bg-slate-50 cursor-pointer transition
+                        ${i % 2 === 0 ? "bg-white" : "bg-slate-50/30"}
                         ${loadingRunId === run.run_id ? "opacity-60" : ""}`}
                       onClick={async () => {
                         if (loadingRunId) return;

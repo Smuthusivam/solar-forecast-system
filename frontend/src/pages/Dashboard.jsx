@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Area, ComposedChart
 } from "recharts";
 import { exportCSV, exportPDF } from "../services/api";
-import { StatCard, Card, AlertBox } from "../components/ui";
+import { StatCard, Card, AlertBox, PageHeader } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Main Dashboard
@@ -26,30 +26,28 @@ function Dashboard() {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-800">Saved Run Dashboard</h1>
-              <p className="text-sm text-gray-400 mt-1">
-                {historyRun.filename} · Run #{historyRun.run_id}
-              </p>
-            </div>
-            <div className="flex gap-2">
+          <PageHeader
+            title="Saved Run Dashboard"
+            subtitle={`${historyRun.filename} · Run #${historyRun.run_id}`}
+            actions={[
               <button
+                key="history"
                 onClick={() => navigate("/history")}
-                className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
               >
-                ← History
-              </button>
+                History
+              </button>,
               <button
+                key="new-forecast"
                 onClick={() => navigate("/")}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
+                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
               >
                 New Forecast
-              </button>
-            </div>
-          </div>
+              </button>,
+            ]}
+          />
 
-          <div className="bg-white rounded-xl shadow p-6 mb-6">
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-4">
               <span className={`text-xs font-semibold px-3 py-1 rounded-full ${modeClass}`}>
                 {historyRun.detection_mode}
@@ -83,7 +81,7 @@ function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-4">
+          <div className="flex items-start gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
             <div className="text-2xl">📊</div>
             <div>
               <p className="font-semibold text-amber-800 mb-1">Chart not available for this run</p>
@@ -93,7 +91,7 @@ function Dashboard() {
               </p>
               <button
                 onClick={() => navigate("/")}
-                className="mt-3 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition"
+                className="mt-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
               >
                 Upload CSV to rerun →
               </button>
@@ -108,9 +106,9 @@ function Dashboard() {
   if (!forecast) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
-        <p className="text-gray-500 text-lg">No forecast data found.</p>
+        <p className="text-slate-500 text-lg">No forecast data found.</p>
         <button onClick={() => navigate("/")}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+          className="rounded-full bg-slate-900 px-6 py-2 text-white transition hover:bg-slate-800">
           Go Back to Upload
         </button>
       </div>
@@ -153,50 +151,51 @@ function Dashboard() {
     <div className="min-h-screen bg-gray-50 p-6">
 
       {/* ─── Header ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Forecast Dashboard</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            {result?.filename} — Run #{forecast.run_id} —
-            <span className="ml-1">
-              {forecast.detection_mode === "direct"
-                ? "Direct GHI" : "Estimated GHI"}
-            </span>
-          </p>
-        </div>
-
-        <div className="flex gap-2">
+      <PageHeader
+        title="Forecast Dashboard"
+        subtitle={`${result?.filename} — Run #${forecast.run_id} — ${forecast.detection_mode === "direct" ? "Direct GHI" : "Estimated GHI"}`}
+        actions={[
           <button
+            key="csv"
             onClick={() => handleExport("csv")}
             disabled={exporting !== null}
-            className="border border-gray-300 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50">
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
+          >
             {exporting === "csv" ? "..." : "CSV"}
-          </button>
+          </button>,
           <button
+            key="pdf"
             onClick={() => handleExport("pdf")}
             disabled={exporting !== null}
-            className="border border-gray-300 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50">
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
+          >
             {exporting === "pdf" ? "..." : "PDF"}
-          </button>
-          <button onClick={() => navigate("/compare", { state: { forecast, result } })}
-            className="border border-blue-300 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">
-            Models →
-          </button>
-          <button onClick={() => navigate("/")}
-            className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
-            ← Upload
-          </button>
-        </div>
-      </div>
+          </button>,
+          <button
+            key="models"
+            onClick={() => navigate("/compare", { state: { forecast, result } })}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Models
+          </button>,
+          <button
+            key="upload"
+            onClick={() => navigate("/")}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Upload
+          </button>,
+        ]}
+      />
 
       {/* ─── Top metrics row ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatCard label="RMSE" value={em.rmse.toFixed(2)} unit="W/m²"
-          color="text-blue-600" sub="lower is better" />
+          color="text-slate-900" sub="lower is better" />
         <StatCard label="MAE" value={em.mae.toFixed(2)} unit="W/m²"
-          color="text-purple-600" sub="lower is better" />
+          color="text-slate-900" sub="lower is better" />
         <StatCard label="R²" value={em.r2.toFixed(4)}
-          color={em.r2 > 0.85 ? "text-green-600" : "text-orange-500"}
+          color={em.r2 > 0.85 ? "text-emerald-600" : "text-amber-600"}
           sub={em.r2 > 0.85 ? "excellent fit" : "moderate fit"} />
       </div>
 

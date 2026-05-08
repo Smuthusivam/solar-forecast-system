@@ -27,6 +27,7 @@ COPY ml_core /app/ml_core
 RUN mkdir -p /app/backend/storage/db \
              /app/backend/storage/uploads \
              /app/backend/storage/exports \
+             /app/backend/storage/sessions \
              /app/ml_core/saved_models
 
 WORKDIR /app/backend

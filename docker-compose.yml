@@ -49,10 +49,11 @@ services:
       ANTHROPIC_API_KEY:  ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env}
       ALLOWED_ORIGINS:    ${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
     volumes:
-      # Persist uploads, exports, and trained models across container rebuilds
+      # Persist uploads, exports, trained models, and sessions across container rebuilds
       - backend_uploads:/app/backend/storage/uploads
       - backend_exports:/app/backend/storage/exports
       - backend_models:/app/ml_core/saved_models
+      - backend_sessions:/app/backend/storage/sessions
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     networks:
@@ -84,3 +85,4 @@ volumes:
   backend_uploads:
   backend_exports:
   backend_models:
+  backend_sessions:

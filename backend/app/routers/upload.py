@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import pickle
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -27,7 +28,9 @@ _BACKEND_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 _UPLOADS_DIR = os.path.join(_BACKEND_DIR, "storage", "uploads")
+_SESSIONS_DIR = os.path.join(_BACKEND_DIR, "storage", "sessions")
 os.makedirs(_UPLOADS_DIR, exist_ok=True)
+os.makedirs(_SESSIONS_DIR, exist_ok=True)
 
 
 def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
@@ -42,12 +45,39 @@ def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
 
 SESSION_TTL_HOURS = 2
 
-_sessions: dict[str, dict[str, Any]] = {}
+
+def _session_path(session_id: str) -> str:
+    return os.path.join(_SESSIONS_DIR, f"{session_id}.pkl")
+
+
+def _write_session(session_id: str, data: dict[str, Any]) -> None:
+    with open(_session_path(session_id), "wb") as f:
+        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _read_session(session_id: str) -> dict[str, Any] | None:
+    path = _session_path(session_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception as exc:
+        logger.warning("Failed to load session %s: %s", session_id, exc)
+        return None
+
+
+def _delete_session(session_id: str) -> None:
+    path = _session_path(session_id)
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def get_session(session_id: str) -> dict[str, Any]:
     # Look up a session and raise 404/410 if missing or expired.
-    session = _sessions.get(session_id)
+    session = _read_session(session_id)
 
     if not session:
         raise HTTPException(
@@ -60,7 +90,7 @@ def get_session(session_id: str) -> dict[str, Any]:
         )
 
     if datetime.now(timezone.utc).replace(tzinfo=None) > session["expires_at"]:
-        _sessions.pop(session_id, None)
+        _delete_session(session_id)
         raise HTTPException(
             status_code=410,
             detail={
@@ -74,13 +104,23 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 def _purge_expired_sessions() -> None:
-    # Remove sessions past their TTL to avoid unbounded memory growth.
-    now     = datetime.now(timezone.utc).replace(tzinfo=None)
-    expired = [sid for sid, s in _sessions.items() if now > s["expires_at"]]
-    for sid in expired:
-        _sessions.pop(sid, None)
-    if expired:
-        logger.info("Purged %d expired sessions", len(expired))
+    # Remove session files past their TTL to avoid unbounded disk growth.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        for fname in os.listdir(_SESSIONS_DIR):
+            if not fname.endswith(".pkl"):
+                continue
+            path = os.path.join(_SESSIONS_DIR, fname)
+            try:
+                with open(path, "rb") as f:
+                    data = pickle.load(f)
+                if now > data.get("expires_at", now):
+                    os.remove(path)
+                    logger.info("Purged expired session: %s", fname)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning("Session purge failed: %s", exc)
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -182,7 +222,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
     # but a key present with None value causes it to look up df[None] and crash.
     clean_col_map = {k: v for k, v in detection["detected"].items() if v is not None}
 
-    _sessions[session_id] = {
+    session_data = {
         "df":             df,
         "detected_cols":  clean_col_map,
         "detection_mode": detection["detection_mode"],
@@ -205,9 +245,11 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             column_map     = json.dumps(detection["detected"]),
             detection_mode = detection["detection_mode"],
         )
-        _sessions[session_id]["dataset_id"] = dataset.dataset_id
+        session_data["dataset_id"] = dataset.dataset_id
     except Exception as exc:
         logger.warning("Failed to persist dataset metadata for %s: %s", session_id, exc)
+
+    _write_session(session_id, session_data)
 
     try:
         from app.routers.correction import register_upload_session

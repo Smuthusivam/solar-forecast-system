@@ -1,5 +1,5 @@
 """
-test_anomaly.py — Unit tests for app/services/anomaly.py
+test_anomaly.py — Unit tests for backend/app/services/anomaly.py
 
 Covers: _hourly_max, _is_physically_impossible, _is_weather_coherent,
         _is_daytime, severity helpers,

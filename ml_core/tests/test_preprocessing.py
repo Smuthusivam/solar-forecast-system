@@ -1,5 +1,5 @@
 """
-test_preprocessing.py — Unit tests for app/services/preprocessing.py
+test_preprocessing.py — Unit tests for ml_core/preprocessing.py
 
 Covers: parse_csv, standardise_columns, parse_timestamps,
         _coerce_numeric, _clip_to_bounds, _fill_missing,

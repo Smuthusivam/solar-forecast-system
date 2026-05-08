@@ -1,16 +1,15 @@
 """
-conftest.py — Shared pytest fixtures and data builders for all test modules.
+backend/tests/conftest.py — Shared fixtures for backend unit tests.
 
-Imported automatically by pytest — no explicit import needed in test files.
+Provides the db_session fixture and irradiance data builders used by
+test_database.py and test_anomaly.py.
+ML preprocessing fixtures live in ml_core/tests/conftest.py.
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import os
 import sys
-from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -27,8 +26,6 @@ for p in (BACKEND_DIR, ROOT_DIR):
 from app.database import Base
 
 
-# ── Database ──────────────────────────────────────────────────────────────────
-
 @pytest.fixture()
 def db_session():
     """
@@ -44,48 +41,15 @@ def db_session():
     Base.metadata.drop_all(bind=engine)
 
 
-# ── CSV builders ──────────────────────────────────────────────────────────────
-
-def make_csv_bytes(rows: int = 72, with_irradiance: bool = True) -> bytes:
-    """
-    Build a minimal well-formed CSV in memory.
-
-    Parameters
-    ----------
-    rows            Number of hourly data rows (≥48 satisfies MIN_ROWS).
-    with_irradiance Include an irradiance column; set False to test the GHI estimation path.
-    """
-    buf  = io.StringIO()
-    w    = csv.writer(buf)
-    cols = ["timestamp", "temperature", "humidity", "wind_speed", "cloud_cover"]
-    if with_irradiance:
-        cols.insert(1, "irradiance")
-    w.writerow(cols)
-
-    start = datetime(2024, 6, 1, 0, 0)
-    for i in range(rows):
-        ts   = start + timedelta(hours=i)
-        hour = ts.hour
-        irr  = max(0.0, 600.0 * (1 - abs(12 - hour) / 12))
-        row  = [ts.isoformat(), round(20 + hour * 0.1, 2), 55.0, 3.0, 20.0]
-        if with_irradiance:
-            row.insert(1, round(irr, 2))
-        w.writerow(row)
-
-    return buf.getvalue().encode()
-
-
-# ── Series / DataFrame builders ───────────────────────────────────────────────
+# ── Irradiance data builders (used by test_anomaly.py) ────────────────────────
 
 def make_irradiance_series(n: int = 96, seed: int = 42) -> pd.Series:
     """
     Return a pd.Series with a DatetimeIndex and realistic daytime irradiance values.
-    Used as input to the statistical anomaly detectors.
     """
-    rng   = np.random.default_rng(seed)
-    start = pd.Timestamp("2024-06-01 00:00")
-    idx   = pd.date_range(start, periods=n, freq="h")
-    vals  = np.array([
+    rng  = np.random.default_rng(seed)
+    idx  = pd.date_range("2024-06-01", periods=n, freq="h")
+    vals = np.array([
         max(0.0, 600.0 * (1 - abs(12 - ts.hour) / 12) + rng.normal(0, 20))
         for ts in idx
     ])

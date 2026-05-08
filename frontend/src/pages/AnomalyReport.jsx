@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, BarChart, Bar, ScatterChart,
-  Scatter, ZAxis, Cell,
+  Legend, ResponsiveContainer, BarChart, Bar, Cell,
 } from "recharts";
 import {
   getAnomalies,
@@ -542,77 +541,100 @@ export default function AnomalyReport({ datasetId }) {
         const cmpModels     = comparisonResult?.models_info || [];
         const cmpPoints     = comparisonResult?.forecast    || [];
 
+        // Model fitness status label from R² value
+        const getFitStatus = (r2) => {
+          if (r2 == null) return null;
+          if (r2 >= 0.95) return { label: "Excellent fit",  cls: "bg-green-100 text-green-700 border-green-300" };
+          if (r2 >= 0.85) return { label: "Good fit",       cls: "bg-blue-100 text-blue-700 border-blue-300"   };
+          if (r2 >= 0.75) return { label: "Acceptable fit", cls: "bg-yellow-100 text-yellow-700 border-yellow-300" };
+          if (r2 >= 0.50) return { label: "Weak fit",       cls: "bg-orange-100 text-orange-700 border-orange-300" };
+          if (r2 >= 0)    return { label: "Poor fit",       cls: "bg-red-100 text-red-600 border-red-300"      };
+          return               { label: "Failing",          cls: "bg-red-200 text-red-800 border-red-400"      };
+        };
+
         // Build metric improvement cards
         const metricCards = origMetrics && cmpMetrics
           ? [
-              { label: "RMSE",  orig: origMetrics.rmse,  corr: cmpMetrics.rmse,  unit: "",      lowerBetter: true  },
-              { label: "MAE",   orig: origMetrics.mae,   corr: cmpMetrics.mae,   unit: "",      lowerBetter: true  },
-              { label: "R²",    orig: origMetrics.r2,    corr: cmpMetrics.r2,    unit: "",      lowerBetter: false },
+              { label: "RMSE",  orig: origMetrics.rmse,  corr: cmpMetrics.rmse,  lowerBetter: true  },
+              { label: "MAE",   orig: origMetrics.mae,   corr: cmpMetrics.mae,   lowerBetter: true  },
+              { label: "R²",    orig: origMetrics.r2,    corr: cmpMetrics.r2,    lowerBetter: false },
             ].filter(m => m.orig != null && m.corr != null)
           : [];
 
-        // Build time series chart data aligned by index
         const step = Math.max(1, Math.floor(Math.max(origPoints.length, cmpPoints.length) / 200));
-        const chartData = origPoints
-          .filter((_, i) => i % step === 0)
-          .map((p, i) => ({
-            time:      p.timestamp.substring(5, 16).replace("T", " "),
-            Actual:    p.actual != null ? parseFloat(p.actual.toFixed(1)) : null,
-            "Original Forecast":  p.predicted != null ? parseFloat(p.predicted.toFixed(1)) : null,
-            "Corrected Forecast": cmpPoints[i * step]?.predicted != null
-              ? parseFloat(cmpPoints[i * step].predicted.toFixed(1))
-              : null,
-          }));
 
-        // Absolute error over time
-        const errorData = origPoints
-          .filter((_, i) => i % step === 0)
-          .map((p, i) => {
-            const cmpPred = cmpPoints[i * step]?.predicted;
-            return {
-              time:             p.timestamp.substring(5, 16).replace("T", " "),
-              "Original Error": p.actual != null && p.predicted != null
-                ? parseFloat(Math.abs(p.actual - p.predicted).toFixed(1)) : null,
-              "Corrected Error": p.actual != null && cmpPred != null
-                ? parseFloat(Math.abs(p.actual - cmpPred).toFixed(1)) : null,
-            };
+        // Per-model chart data: before predictions come from origModels, after from cmpModels
+        const modelChartData = (() => {
+          if (!origModels.length || !origPoints.length) return {};
+          const out = {};
+          origModels.forEach(om => {
+            const cm = cmpModels.find(c => c.model_name === om.model_name);
+            out[om.model_name] = origPoints
+              .filter((_, i) => i % step === 0)
+              .map((p, i) => ({
+                time:   p.timestamp.substring(5, 16).replace("T", " "),
+                Actual: p.actual != null ? parseFloat(p.actual.toFixed(1)) : null,
+                Before: om.predictions?.[i * step] != null
+                  ? parseFloat(om.predictions[i * step].toFixed(1)) : null,
+                After:  cm?.predictions?.[i * step] != null
+                  ? parseFloat(cm.predictions[i * step].toFixed(1)) : null,
+              }));
           });
-
-        // Scatter: actual vs predicted for both models
-        const scatterOrig = origPoints
-          .filter((_, i) => i % step === 0)
-          .map(p => ({ actual: p.actual, predicted: p.predicted }))
-          .filter(p => p.actual != null && p.predicted != null);
-
-        const scatterCorr = cmpPoints
-          .filter((_, i) => i % step === 0)
-          .map(p => ({ actual: p.actual, predicted: p.predicted }))
-          .filter(p => p.actual != null && p.predicted != null);
+          return out;
+        })();
 
         return (
           <div className="space-y-6">
 
             {loadingComparison && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">
+              <AlertBox variant="info">
                 Running model on corrected data for comparison...
-              </div>
+              </AlertBox>
+            )}
+
+            {!origMetrics && !loadingComparison && (
+              <AlertBox variant="warning">
+                Original forecast metrics not available. Run a forecast from the Upload page first.
+              </AlertBox>
             )}
 
             {/* Metric improvement cards */}
             {metricCards.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {metricCards.map(({ label, orig, corr, lowerBetter }) => {
                   const improved = lowerBetter ? corr < orig : corr > orig;
                   const pct = orig !== 0 ? Math.abs((corr - orig) / orig * 100).toFixed(2) : null;
+                  const origStatus = label === "R²" ? getFitStatus(orig) : null;
+                  const corrStatus = label === "R²" ? getFitStatus(corr) : null;
                   return (
-                    <div key={label} className="bg-white rounded-xl border border-gray-200 p-4">
-                      <div className="text-xs font-semibold text-gray-500 uppercase mb-2">{label}</div>
-                      <div className="flex items-end gap-2">
-                        <div className="text-2xl font-bold text-gray-900">{corr.toFixed(3)}</div>
-                        <div className="text-sm text-gray-400 line-through mb-0.5">{orig.toFixed(3)}</div>
+                    <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+                      <div className="text-xs font-semibold text-gray-500 uppercase">{label}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 w-14">Before</span>
+                          <span className="font-mono text-gray-600">{orig.toFixed(4)}</span>
+                        </div>
+                        {origStatus && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${origStatus.cls}`}>
+                            {origStatus.label}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 w-14">After</span>
+                          <span className={`font-mono font-semibold ${improved ? "text-green-600" : "text-red-500"}`}>
+                            {corr.toFixed(4)}
+                          </span>
+                        </div>
+                        {corrStatus && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${corrStatus.cls}`}>
+                            {corrStatus.label}
+                          </span>
+                        )}
                       </div>
                       {pct && (
-                        <div className={`mt-1 text-xs font-semibold flex items-center gap-1 ${improved ? "text-green-600" : "text-red-500"}`}>
+                        <div className={`pt-1 border-t border-gray-100 text-xs font-semibold flex items-center gap-1 ${improved ? "text-green-600" : "text-red-500"}`}>
                           {improved ? "▼" : "▲"} {pct}% {improved ? "improvement" : "degradation"}
                         </div>
                       )}
@@ -622,117 +644,72 @@ export default function AnomalyReport({ datasetId }) {
               </div>
             )}
 
-            {!origMetrics && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-                Original forecast metrics not available. Run a forecast from the Upload page first to see the comparison.
-              </div>
-            )}
-
-            {/* Forecast comparison chart */}
-            {chartData.length > 0 && (
-              <Section
-                title="Forecast Comparison -- Original vs Corrected vs Actual"
-                subtitle="How model predictions shift after AI correction"
-              >
-                <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="time" tick={{ fontSize: 9 }}
-                      interval={Math.floor(chartData.length / 8)} />
-                    <YAxis tick={{ fontSize: 11 }} unit=" W/m2" />
-                    <Tooltip contentStyle={{ fontSize: 11 }} formatter={(v) => v != null ? [`${v} W/m2`] : ["--"]} />
-                    <Legend />
-                    <Line type="monotone" dataKey="Actual"             stroke="#6b7280" strokeWidth={2}   dot={false} />
-                    <Line type="monotone" dataKey="Corrected Forecast" stroke="#8b5cf6" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-                    <Line type="monotone" dataKey="Original Forecast"  stroke="#f97316" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Section>
-            )}
-
-            {/* Absolute error comparison */}
-            {errorData.length > 0 && (
-              <Section
-                title="Absolute Prediction Error Over Time"
-                subtitle="Lower is better -- gap between forecast and actual readings"
-              >
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={errorData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="time" tick={{ fontSize: 9 }}
-                      interval={Math.floor(errorData.length / 8)} />
-                    <YAxis tick={{ fontSize: 11 }} unit=" W/m2" />
-                    <Tooltip contentStyle={{ fontSize: 11 }} formatter={(v) => v != null ? [`${v} W/m2`] : ["--"]} />
-                    <Legend />
-                    <Line type="monotone" dataKey="Corrected Error" stroke="#8b5cf6" strokeWidth={1.5} dot={false} />
-                    <Line type="monotone" dataKey="Original Error"  stroke="#f97316" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Section>
-            )}
-
-            {/* Scatter: predicted vs actual -- side by side */}
-            {(scatterOrig.length > 0 || scatterCorr.length > 0) && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Section title="Original: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="actual"    name="Actual"    unit=" W/m2" tick={{ fontSize: 10 }}
-                        label={{ value: "Actual", position: "insideBottom", offset: -4, fontSize: 11 }} />
-                      <YAxis dataKey="predicted" name="Predicted" unit=" W/m2" tick={{ fontSize: 10 }}
-                        label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                      <ZAxis range={[20, 20]} />
-                      <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} W/m2`]} />
-                      <Scatter data={scatterOrig} fill="#f97316" fillOpacity={0.5} name="Original" />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </Section>
-
-                <Section title="Corrected: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="actual"    name="Actual"    unit=" W/m2" tick={{ fontSize: 10 }}
-                        label={{ value: "Actual", position: "insideBottom", offset: -4, fontSize: 11 }} />
-                      <YAxis dataKey="predicted" name="Predicted" unit=" W/m2" tick={{ fontSize: 10 }}
-                        label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                      <ZAxis range={[20, 20]} />
-                      <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} W/m2`]} />
-                      <Scatter data={scatterCorr} fill="#8b5cf6" fillOpacity={0.5} name="Corrected" />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </Section>
-              </div>
-            )}
-
-            {/* Per-model RMSE / MAE bar charts */}
-            {origModels.length > 0 && cmpModels.length > 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {[
-                  { key: "rmse", label: "Per-Model RMSE: Before vs After", sub: "Lower RMSE = better" },
-                  { key: "mae",  label: "Per-Model MAE: Before vs After",  sub: "Lower MAE = better"  },
-                ].map(({ key, label, sub }) => {
-                  const barData = origModels.map(om => {
-                    const cm = cmpModels.find(c => c.model_name === om.model_name);
-                    return {
-                      name: om.model_name,
-                      [`${key.toUpperCase()} (Corrected)`]: cm  ? parseFloat(cm.metrics[key].toFixed(4))  : null,
-                      [`${key.toUpperCase()} (Original)`]:  parseFloat(om.metrics[key].toFixed(4)),
-                    };
-                  });
+            {/* Per-model individual charts — Before vs After vs Actual */}
+            {Object.keys(modelChartData).length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {origModels.map(om => {
+                  const cm      = cmpModels.find(c => c.model_name === om.model_name);
+                  const data    = modelChartData[om.model_name] || [];
+                  const color   = om.model_name === "XGBoost" ? "#3b82f6" : "#10b981";
+                  const origSt  = getFitStatus(om.metrics.r2);
+                  const corrSt  = getFitStatus(cm?.metrics.r2);
                   return (
-                    <Section key={key} title={label} subtitle={sub}>
+                    <Section
+                      key={om.model_name}
+                      title={om.model_name}
+                      subtitle="Predicted vs Actual — before and after AI correction"
+                    >
+                      {/* Status badges */}
+                      <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        {origSt && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${origSt.cls}`}>
+                            Before: {origSt.label}
+                          </span>
+                        )}
+                        {corrSt && cm && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${corrSt.cls}`}>
+                            After: {corrSt.label}
+                          </span>
+                        )}
+                        {om.is_best && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 font-medium">
+                            Best model
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Metrics row */}
+                      <div className="grid grid-cols-3 gap-2 mb-3 text-center text-xs">
+                        {["rmse", "mae", "r2"].map(k => {
+                          const improved = k === "r2"
+                            ? (cm?.metrics[k] ?? 0) > om.metrics[k]
+                            : (cm?.metrics[k] ?? Infinity) < om.metrics[k];
+                          return (
+                            <div key={k} className="bg-gray-50 rounded-lg p-2">
+                              <div className="text-gray-400 uppercase font-semibold mb-0.5">{k.toUpperCase()}</div>
+                              <div className="text-gray-500 line-through text-[11px]">{om.metrics[k].toFixed(3)}</div>
+                              <div className={`font-bold ${improved ? "text-green-600" : "text-red-500"}`}>
+                                {cm ? cm.metrics[k].toFixed(3) : "—"}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Chart */}
                       <ResponsiveContainer width="100%" height={220}>
-                        <BarChart data={barData} layout="vertical" margin={{ left: 60 }}>
+                        <LineChart data={data}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                          <XAxis type="number" tick={{ fontSize: 10 }} unit=" W/m2" />
-                          <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={55} />
-                          <Tooltip formatter={(v) => v != null ? [`${v} W/m2`] : ["--"]} />
-                          <Legend />
-                          <Bar dataKey={`${key.toUpperCase()} (Corrected)`} fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-                          <Bar dataKey={`${key.toUpperCase()} (Original)`}  fill="#f97316" radius={[0, 4, 4, 0]} />
-                        </BarChart>
+                          <XAxis dataKey="time" tick={{ fontSize: 9 }}
+                            interval={Math.floor(data.length / 6)} />
+                          <YAxis tick={{ fontSize: 10 }} unit=" W/m²" />
+                          <Tooltip contentStyle={{ fontSize: 11 }}
+                            formatter={(v) => v != null ? [`${v} W/m²`] : ["—"]} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Line type="monotone" dataKey="Actual" stroke="#6b7280" strokeWidth={1.5} dot={false} />
+                          <Line type="monotone" dataKey="Before" stroke="#f97316" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                          <Line type="monotone" dataKey="After"  stroke={color}   strokeWidth={1.5} dot={false} />
+                        </LineChart>
                       </ResponsiveContainer>
                     </Section>
                   );
@@ -768,19 +745,21 @@ export default function AnomalyReport({ datasetId }) {
                           const improved = corr != null && (lowerBetter ? corr < orig : corr > orig);
                           return (
                             <>
-                              <td className="px-3 py-2 text-center text-gray-500 border-l border-gray-100">{orig?.toFixed(4) ?? "--"}</td>
-                              <td className={`px-3 py-2 text-center font-semibold ${improved ? "text-green-600" : corr != null ? "text-red-500" : "text-gray-400"}`}>
-                                {corr?.toFixed(4) ?? "--"}
+                              <td className="px-3 py-2 text-center text-gray-500 border-l border-gray-100 font-mono text-xs">{orig?.toFixed(3) ?? "—"}</td>
+                              <td className={`px-3 py-2 text-center font-semibold font-mono text-xs ${improved ? "text-green-600" : corr != null ? "text-red-500" : "text-gray-400"}`}>
+                                {corr?.toFixed(3) ?? "—"}
                               </td>
                             </>
                           );
                         };
                         return (
                           <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 font-medium flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${om.model_name === "XGBoost" ? "bg-blue-500" : "bg-emerald-500"}`} />
-                              {om.model_name}
-                              {om.is_best && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">best</span>}
+                            <td className="px-4 py-2 font-medium">
+                              <div className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${om.model_name === "XGBoost" ? "bg-blue-500" : "bg-emerald-500"}`} />
+                                {om.model_name}
+                                {om.is_best && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">best</span>}
+                              </div>
                             </td>
                             {cell(om.metrics.rmse, cm?.metrics.rmse, true)}
                             {cell(om.metrics.mae,  cm?.metrics.mae,  true)}

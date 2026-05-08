@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.database import get_db, save_forecast_run
+from app.database import get_db, save_forecast_run, save_forecast_points
 from app.models.schemas import (
     ForecastRequest,
     ForecastResponse,
@@ -74,6 +74,13 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
         )
         run_id = db_run.run_id
         logger.info("Forecast run saved to DB: run_id=%d", run_id)
+        # Save forecast points (predicted vs actual) for chart replay from history
+        try:
+            save_forecast_points(db, run_id, result["forecast"], is_future=False)
+            if result.get("future_forecast"):
+                save_forecast_points(db, run_id, result["future_forecast"], is_future=True)
+        except Exception as exc:
+            logger.error("Forecast points save failed (non-fatal): %s", exc)
     except Exception as exc:
         logger.error("DB save failed (non-fatal): %s", exc)
         run_id = -1  # don't crash the response over a DB write failure

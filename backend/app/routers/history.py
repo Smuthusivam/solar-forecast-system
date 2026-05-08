@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.database import get_db, get_all_runs, get_run_by_id
+from app.database import get_db, get_all_runs, get_run_by_id, get_forecast_points_by_run_id
 from app.models.schemas import ForecastRunSummary, HistoryResponse
 
 logger = logging.getLogger(__name__)
@@ -41,3 +41,31 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
         )
 
     return ForecastRunSummary.model_validate(run)
+
+
+@router.get("/history/{run_id}/points")
+def get_run_points(run_id: int, db: Session = Depends(get_db)):
+    """Return all stored forecast points for a run (predicted vs actual + confidence bands)."""
+    run = get_run_by_id(db, run_id)
+    if not run:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "run_not_found", "message": f"Forecast run {run_id} not found.", "field": "run_id"},
+        )
+
+    points = get_forecast_points_by_run_id(db, run_id)
+    return {
+        "run_id":   run_id,
+        "count":    len(points),
+        "points": [
+            {
+                "timestamp": p.timestamp.isoformat(),
+                "predicted": p.predicted,
+                "actual":    p.actual,
+                "lower":     p.lower,
+                "upper":     p.upper,
+                "is_future": p.is_future,
+            }
+            for p in points
+        ],
+    }

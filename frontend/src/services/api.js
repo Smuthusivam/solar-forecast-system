@@ -189,6 +189,16 @@ export async function runCorrection(sessionId) {
 // Uses the AI-corrected dataframe from a
 // completed correction session
 // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// 9. GET STORED FORECAST POINTS
+// Retrieves predicted vs actual points
+// saved to DB — used to replay chart from history
+// ─────────────────────────────────────────
+export async function getForecastPoints(runId) {
+  const response = await API.get(`/api/history/${runId}/points`);
+  return response.data;
+}
+
 export async function runForecastFromCorrected(correctionSessionId, horizonHours = 24, trainSize = 80) {
   const response = await API.post(
     `/api/correction/forecast/${correctionSessionId}`,

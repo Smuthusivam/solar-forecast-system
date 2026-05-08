@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { getHistory } from "../services/api";
+import { getHistory, getForecastPoints } from "../services/api";
 import { R2Badge, AlertBox } from "../components/ui";
 
 const MODE_COLORS = {
@@ -11,12 +11,13 @@ const MODE_COLORS = {
 function History() {
   const navigate = useNavigate();
 
-  const [runs,    setRuns]    = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
-  const [search,  setSearch]  = useState("");
-  const [sortBy,  setSortBy]  = useState("created_at");
-  const [sortDir, setSortDir] = useState("desc");
+  const [runs,        setRuns]        = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState(null);
+  const [search,      setSearch]      = useState("");
+  const [sortBy,      setSortBy]      = useState("created_at");
+  const [sortDir,     setSortDir]     = useState("desc");
+  const [loadingRunId, setLoadingRunId] = useState(null);
 
   // ── Fetch all runs on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -209,12 +210,45 @@ function History() {
                   return (
                     <tr key={run.run_id}
                       className={`border-b hover:bg-blue-50 cursor-pointer transition
-                        ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
-                      onClick={() => navigate("/dashboard", {
-                        state: { historyRun: run }
-                      })}
+                        ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}
+                        ${loadingRunId === run.run_id ? "opacity-60" : ""}`}
+                      onClick={async () => {
+                        if (loadingRunId) return;
+                        setLoadingRunId(run.run_id);
+                        try {
+                          const pointsData = await getForecastPoints(run.run_id);
+                          if (pointsData.count > 0) {
+                            // Reconstruct forecast object so Dashboard can render the full chart
+                            const forecast = {
+                              run_id:         run.run_id,
+                              detection_mode: run.detection_mode,
+                              best_model:     run.best_model || "best model",
+                              metrics:        { rmse: run.rmse, mae: run.mae, r2: run.r2, mape: 0 },
+                              forecast:       pointsData.points.filter(p => !p.is_future),
+                              future_forecast: pointsData.points.filter(p => p.is_future),
+                              models_info:    [],
+                              feature_importance: null,
+                            };
+                            const result = { session_id: run.session_id, filename: run.filename };
+                            navigate("/dashboard", { state: { forecast, result, historyRun: run } });
+                          } else {
+                            // No points stored (old run) — fall back to summary-only view
+                            navigate("/dashboard", { state: { historyRun: run } });
+                          }
+                        } catch {
+                          navigate("/dashboard", { state: { historyRun: run } });
+                        } finally {
+                          setLoadingRunId(null);
+                        }
+                      }}
                     >
-                      <td className="p-3 font-mono text-gray-400">#{run.run_id}</td>
+                      <td className="p-3 font-mono text-gray-400">
+                        {loadingRunId === run.run_id ? (
+                          <span className="text-blue-500 animate-pulse">Loading…</span>
+                        ) : (
+                          `#${run.run_id}`
+                        )}
+                      </td>
                       <td className="p-3">
                         <div className="font-medium text-gray-700 truncate max-w-40"
                           title={run.filename}>

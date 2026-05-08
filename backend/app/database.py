@@ -252,3 +252,13 @@ def get_all_runs(db: Session, limit: int = 100) -> list[ForecastRun]:
 def get_run_by_id(db: Session, run_id: int) -> ForecastRun | None:
     """Return a single run by primary key, or None if not found."""
     return db.query(ForecastRun).filter(ForecastRun.run_id == run_id).first()
+
+
+def get_forecast_points_by_run_id(db: Session, run_id: int) -> list[ForecastPoint]:
+    """Return all forecast points for a run, ordered by timestamp."""
+    return (
+        db.query(ForecastPoint)
+        .filter(ForecastPoint.run_id == run_id)
+        .order_by(ForecastPoint.timestamp)
+        .all()
+    )

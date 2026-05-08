@@ -1,5 +1,7 @@
 // Shared UI primitives used across all pages.
 
+import { NavLink } from "react-router-dom";
+
 // ── StatCard ──────────────────────────────────────────────────────────────────
 export function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
   return (
@@ -155,9 +157,8 @@ export function MetricCard({ label, original, corrected, higherIsBetter = false 
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 export const fmtWm2 = (v) => v != null ? [`${Number(v).toFixed(2)} W/m²`] : ["—"];
-// ── NavBar ───────────────────────────────────────────────────────────────────
-import { NavLink } from "react-router-dom";
 
+// ── NavBar ───────────────────────────────────────────────────────────────────
 export function NavBar() {
   const items = [
     { to: "/", label: "Upload" },
@@ -168,17 +169,47 @@ export function NavBar() {
   ];
 
   return (
-    <nav className="w-full border-b border-gray-100 mb-4">
-      <div className="max-w-6xl mx-auto flex gap-2 px-2">
-        {items.map((it) => (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            className={({ isActive }) => `px-3 py-1 text-sm font-medium transition ${isActive ? "text-blue-600" : "text-gray-600 hover:text-gray-800"}`}
+    <nav className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <NavLink to="/" className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white shadow-sm">
+            SF
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold text-slate-900">Solar Forecast System</div>
+            <div className="text-xs text-slate-500">Upload to forecast workflow</div>
+          </div>
+        </NavLink>
+
+        <div className="hidden items-center gap-1 rounded-full bg-slate-100 p-1 md:flex">
+          {items.map((it) => (
+            <NavLink
+              key={it.to}
+              to={it.to}
+              className={({ isActive }) => `rounded-full px-4 py-2 text-sm font-medium transition ${isActive ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-slate-900"}`}
+            >
+              {it.label}
+            </NavLink>
+          ))}
+        </div>
+
+        <div className="md:hidden">
+          <select
+            defaultValue=""
+            onChange={(e) => e.target.value && (window.location.href = e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
+            aria-label="Navigate to page"
           >
-            {it.label}
-          </NavLink>
-        ))}
+            <option value="" disabled>
+              Navigate
+            </option>
+            {items.map((it) => (
+              <option key={it.to} value={it.to}>
+                {it.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </nav>
   );

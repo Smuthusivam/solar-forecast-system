@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadCSV } from "../services/api";
+import { uploadCSV, runForecast } from "../services/api";
 import { saveForecastState } from "../services/forecastState";
-import { useForecastJobPolling } from "../hooks/useForecastJobPolling";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
@@ -24,12 +23,6 @@ function Upload() {
   const [trainSize, setTrainSize] = useState(80);
   const [activeTab, setActiveTab] = useState("data");
   const [fileName, setFileName]   = useState("");
-  const {
-    status: forecastJobStatus,
-    error: forecastJobError,
-    isBusy: isForecastJobBusy,
-    runForecastAsync,
-  } = useForecastJobPolling();
 
   useEffect(() => {
     const raw = localStorage.getItem(storageKey);
@@ -137,19 +130,13 @@ function Upload() {
     setError(null);
 
     try {
-      const forecastData = await runForecastAsync({
-        sessionId: result.session_id,
-        horizonHours: 24,
-        trainSize,
-        skipFuture: true,
-        pollIntervalMs: 2000,
-      });
+      const forecastData = await runForecast(result.session_id, 24, trainSize, true);
       setForecast(forecastData);
       // Save to shared state for NavBar navigation
       saveForecastState(forecastData, result, fileName || result.filename);
       navigate("/dashboard", { state: { forecast: forecastData, result } });
     } catch (err) {
-      setError(err?.message || "Model run failed. Please try again.");
+      setError("Model run failed. Please try again.");
     } finally {
       setRunning(false);
     }
@@ -279,16 +266,6 @@ function Upload() {
           </div>
         )}
 
-        {forecastJobError && !error && (
-          <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
-            <span className="text-red-500 text-xl mt-0.5">✕</span>
-            <div>
-              <p className="font-semibold text-red-700">Forecast failed</p>
-              <p className="text-sm text-red-600 mt-1">{forecastJobError}</p>
-            </div>
-          </div>
-        )}
-
         {(result || forecast) && (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-gray-400">
@@ -405,19 +382,11 @@ function Upload() {
               {/* Run Models Button */}
               <button
                 onClick={handleRunForecast}
-                disabled={running || isForecastJobBusy}
+                disabled={running}
                 className="w-full rounded-full bg-slate-900 py-3 font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
-                {(running || isForecastJobBusy)
-                  ? (forecastJobStatus === "processing" ? "Running Models... (processing)" : "Running Models...")
-                  : "Run Models"}
+                {running ? "Running Models..." : "Run Models"}
               </button>
-
-              {(running || isForecastJobBusy) && (
-                <p className="mt-2 text-xs text-gray-500 text-center">
-                  Forecast job status: {forecastJobStatus}. Polling every 2 seconds...
-                </p>
-              )}
 
             </div>
           )

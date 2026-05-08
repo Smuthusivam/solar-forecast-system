@@ -47,7 +47,7 @@ services:
       DB_MAX_OVERFLOW:    ${DB_MAX_OVERFLOW:-10}
       DB_ECHO:            ${DB_ECHO:-false}
       ANTHROPIC_API_KEY:  ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env}
-      ALLOWED_ORIGINS:    ${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
+      ALLOWED_ORIGINS:    ${ALLOWED_ORIGINS:-https://178.128.203.208.nip.io,http://localhost,http://localhost:80}
     volumes:
       # Persist uploads, exports, trained models, and sessions across container rebuilds
       - backend_uploads:/app/backend/storage/uploads
@@ -72,7 +72,10 @@ services:
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - solar-net
 

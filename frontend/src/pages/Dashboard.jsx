@@ -165,10 +165,6 @@ function Dashboard() {
             className="border border-blue-300 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">
             Models →
           </button>
-          <button onClick={() => navigate(`/anomalies?session_id=${result.session_id}`, { state: { forecast, result } })}
-            className="border border-orange-300 text-orange-600 px-4 py-2 rounded-lg text-sm hover:bg-orange-50">
-            Anomalies →
-          </button>
           <button onClick={() => navigate("/")}
             className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
             ← Upload

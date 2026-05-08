@@ -124,10 +124,16 @@ export default function Forecast() {
             )}
           </p>
         </div>
-        <button onClick={() => navigate(-1)}
-          className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-          ← Back
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => navigate("/history")}
+            className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            View History
+          </button>
+          <button onClick={() => navigate(-1)}
+            className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+            ← Back
+          </button>
+        </div>
       </div>
 
       {fromCorrection && (

@@ -166,8 +166,8 @@ export default function AnomalyReport({ datasetId }) {
 
   const tabs = [
     { key: "detection",  label: "Detection" },
-    { key: "correction", label: "AI Correction", disabled: !correctionResult },
-    { key: "comparison", label: "Before vs After", disabled: !correctionResult },
+    { key: "correction", label: "Correction", disabled: !correctionResult },
+    { key: "comparison", label: "Before & After", disabled: !correctionResult },
   ];
 
   return (
@@ -175,7 +175,7 @@ export default function AnomalyReport({ datasetId }) {
 
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/compare", { state: { forecast, result } })}
             className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition"
@@ -185,7 +185,7 @@ export default function AnomalyReport({ datasetId }) {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Anomaly Report</h1>
-            <p className="text-sm text-gray-500 mt-0.5">AI-powered detection, validation &amp; correction</p>
+            <p className="text-sm text-gray-500 mt-0.5">Detection, validation &amp; AI-assisted correction</p>
           </div>
         </div>
         <div className="flex gap-3 flex-wrap">
@@ -195,13 +195,13 @@ export default function AnomalyReport({ datasetId }) {
                 href={getCorrectedCSVUrl(correctionResult.session_id)}
                 className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
               >
-                Download Corrected CSV
+                Download corrected CSV
               </a>
               <button
                 onClick={() => downloadComparisonCSV(correctionResult)}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
               >
-                Download Comparison CSV
+                Download comparison CSV
               </button>
               <button
                 onClick={() => navigate("/forecast", {
@@ -214,7 +214,7 @@ export default function AnomalyReport({ datasetId }) {
                 })}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
               >
-                Go to Forecast →
+                Open forecast
               </button>
             </>
           )}
@@ -223,7 +223,7 @@ export default function AnomalyReport({ datasetId }) {
             disabled={loadingCorrection || loadingAnomalies}
             className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {loadingCorrection ? "Running AI Correction..." : "Run AI Correction"}
+            {loadingCorrection ? "Running correction..." : "Run correction"}
           </button>
         </div>
       </div>
@@ -232,7 +232,29 @@ export default function AnomalyReport({ datasetId }) {
         <AlertBox>Correction failed: {correctionError}</AlertBox>
       )}
 
-      {/* Top stats */}
+      {/* Total anomalies — always visible once loaded */}
+      {!loadingAnomalies && !errorAnomalies && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-3xl font-bold text-orange-600">{anomalies.length}</div>
+            <div className="text-xs text-gray-500 mt-1">Total Anomalies</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-3xl font-bold text-red-500">{anomalies.filter(a => a.severity === "high").length}</div>
+            <div className="text-xs text-gray-500 mt-1">High Severity</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-3xl font-bold text-yellow-500">{anomalies.filter(a => a.severity === "medium").length}</div>
+            <div className="text-xs text-gray-500 mt-1">Medium Severity</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-3xl font-bold text-blue-500">{anomalies.filter(a => a.severity === "low").length}</div>
+            <div className="text-xs text-gray-500 mt-1">Low Severity</div>
+          </div>
+        </div>
+      )}
+
+      {/* Correction stats — visible after correction runs */}
       {correctionResult && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
@@ -361,7 +383,7 @@ export default function AnomalyReport({ datasetId }) {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                       <tr>
-                        {["#", "Timestamp", "Value (W/m²)", "Expected", "Deviation", "Method", "Severity"].map((h) => (
+                            {["No.", "Timestamp", "Value (W/m²)", "Expected", "Deviation", "Detection method", "Severity"].map((h) => (
                           <th key={h} className="px-4 py-2 text-left">{h}</th>
                         ))}
                       </tr>

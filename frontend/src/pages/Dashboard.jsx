@@ -83,9 +83,22 @@ function Dashboard() {
             </div>
           </div>
 
-          <AlertBox variant="warning">
-            This view shows saved summary metrics from history. Full forecast charts are not stored in the database, so rerun the forecast from upload to see detailed plots.
-          </AlertBox>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-4">
+            <div className="text-2xl">📊</div>
+            <div>
+              <p className="font-semibold text-amber-800 mb-1">Chart not available for this run</p>
+              <p className="text-sm text-amber-700">
+                This run was saved before chart storage was enabled. Only summary metrics are available.
+                Upload the same CSV again to get the full predicted vs actual chart.
+              </p>
+              <button
+                onClick={() => navigate("/")}
+                className="mt-3 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition"
+              >
+                Upload CSV to rerun →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -111,13 +124,17 @@ function Dashboard() {
   const step = Math.max(1, Math.floor(points.length / 200));
   const chartData = points
     .filter((_, i) => i % step === 0)
-    .map(p => ({
-      time:      p.timestamp.substring(5, 16).replace("T", " "),
-      Predicted: parseFloat(p.predicted?.toFixed(1)),
-      Actual:    p.actual != null ? parseFloat(p.actual?.toFixed(1)) : null,
-      Lower:     p.lower  != null ? parseFloat(p.lower?.toFixed(1))  : null,
-      Upper:     p.upper  != null ? parseFloat(p.upper?.toFixed(1))  : null,
-    }));
+    .map(p => {
+      const ts = new Date(p.timestamp);
+      const time = `${(ts.getMonth()+1).toString().padStart(2,"0")}-${ts.getDate().toString().padStart(2,"0")} ${ts.getHours().toString().padStart(2,"0")}:${ts.getMinutes().toString().padStart(2,"0")}`;
+      return {
+        time,
+        Predicted: parseFloat(p.predicted?.toFixed(1)),
+        Actual:    p.actual != null ? parseFloat(p.actual?.toFixed(1)) : null,
+        Lower:     p.lower  != null ? parseFloat(p.lower?.toFixed(1))  : null,
+        Upper:     p.upper  != null ? parseFloat(p.upper?.toFixed(1))  : null,
+      };
+    });
 
   // ── Export handlers ────────────────────────────────────────────────────
   async function handleExport(type) {

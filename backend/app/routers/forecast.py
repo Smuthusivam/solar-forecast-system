@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db, save_forecast_run, save_forecast_points
+from app.services.anomaly import detect_anomalies
 from app.models.schemas import (
     ForecastRequest,
     ForecastResponse,
@@ -57,6 +58,11 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
             },
         )
 
+    try:
+        anomaly_count = detect_anomalies(df)["anomaly_count"]
+    except Exception:
+        anomaly_count = 0
+
     m = result["metrics"]
     try:
         db_run = save_forecast_run(
@@ -70,7 +76,7 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
             mae            = m["mae"],
             r2             = m["r2"],
             rows_processed = result["rows_processed"],
-            anomaly_count  = 0,  # updated later by the anomaly router
+            anomaly_count  = anomaly_count,
         )
         run_id = db_run.run_id
         logger.info("Forecast run saved to DB: run_id=%d", run_id)

@@ -59,7 +59,7 @@ def get_run_points(run_id: int, db: Session = Depends(get_db)):
         "count":    len(points),
         "points": [
             {
-                "timestamp": p.timestamp.isoformat(),
+                "timestamp": p.timestamp if isinstance(p.timestamp, str) else p.timestamp.isoformat(),
                 "predicted": p.predicted,
                 "actual":    p.actual,
                 "lower":     p.lower,

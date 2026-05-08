@@ -216,10 +216,13 @@ def save_dataset(db: Session, **kwargs) -> Dataset:
 def save_forecast_points(db: Session, run_id: int, points: list[dict], is_future: bool = False) -> None:
     records = []
     for p in points:
+        ts = p["timestamp"]
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts)
         records.append(
             ForecastPoint(
                 run_id=run_id,
-                timestamp=p["timestamp"],
+                timestamp=ts,
                 predicted=p["predicted"],
                 actual=p.get("actual"),
                 lower=p.get("lower"),
@@ -228,14 +231,6 @@ def save_forecast_points(db: Session, run_id: int, points: list[dict], is_future
             )
         )
     db.add_all(records)
-    db.commit()
-
-
-def update_anomaly_count(db: Session, run_id: int, count: int) -> None:
-    # Write back the anomaly count once detection finishes (run is saved first with 0).
-    db.query(ForecastRun).filter(ForecastRun.run_id == run_id).update(
-        {"anomaly_count": count}
-    )
     db.commit()
 
 

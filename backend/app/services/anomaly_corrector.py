@@ -31,7 +31,7 @@ NIGHT_HOURS = set(range(0, 5)) | set(range(21, 24))
 # One anomaly per Claude call — guarantees complete result, no truncation ever.
 # Haiku + 20 concurrent = 380 anomalies done in ~20 waves, each wave ~1-2s.
 MAX_CONCURRENT    = 20
-_CORRECTION_MODEL = "claude-haiku-4-5-20251001"
+_CORRECTION_MODEL = "claude-haiku-4-5"
 _MAX_TOKENS       = 150  # single JSON object needs ~80 tokens; 150 is safe headroom
 
 

@@ -35,21 +35,6 @@ def register_upload_session(dataset_id: str, df: pd.DataFrame, column_map: dict)
     upload_sessions[dataset_id] = {"df": df, "column_map": column_map}
 
 
-def _metrics_delta(orig: dict, corr: dict) -> dict:
-    """Compute absolute and percentage deltas between two metrics dicts."""
-    delta = {}
-    for key in orig:
-        if key in corr and isinstance(orig[key], (int, float)):
-            o, c = float(orig[key]), float(corr[key])
-            delta[key] = {
-                "original": round(o, 6),
-                "corrected": round(c, 6),
-                "delta": round(c - o, 6),
-                "improvement_pct": round((o - c) / o * 100, 2) if o != 0 else 0,
-            }
-    return delta
-
-
 @router.post("/run/{dataset_id}")
 async def run_correction(dataset_id: str):
     """
@@ -72,7 +57,7 @@ async def run_correction(dataset_id: str):
         except HTTPException:
             raise HTTPException(
                 status_code=404,
-                detail=f"Dataset '{dataset_id}' not found. Upload a CSV first via /api/upload."
+                detail="Dataset not found. Please upload a CSV first via /api/upload."
             )
 
     df_original: pd.DataFrame = session["df"]
@@ -85,7 +70,7 @@ async def run_correction(dataset_id: str):
     if not anomalies:
         return {
             "dataset_id": dataset_id,
-            "message": "No anomalies detected — dataset is clean.",
+            "message": "No anomalies detected — your dataset looks clean.",
             "anomaly_count": 0,
             "correction_log": [],
             "stats": {},
@@ -97,46 +82,7 @@ async def run_correction(dataset_id: str):
     )
     stats = compute_correction_stats(correction_log)
 
-    # Step 3 — Run ML pipeline on both versions in parallel
-    try:
-        from ml_core.pipeline import run_pipeline
-
-        logger.info("Running original + corrected pipelines in parallel...")
-        results_original, results_corrected = await asyncio.gather(
-            asyncio.to_thread(run_pipeline, df_original,  column_map),
-            asyncio.to_thread(run_pipeline, df_corrected, column_map),
-        )
-
-        metrics_comparison = _metrics_delta(
-            results_original["metrics"],
-            results_corrected["metrics"],
-        )
-
-        forecasts = {
-            "timestamps": [p["timestamp"] for p in results_original["forecast"]],
-            "original":   [p["predicted"]  for p in results_original["forecast"]],
-            "corrected":  [p["predicted"]  for p in results_corrected["forecast"]],
-            "actuals":    [p["actual"]      for p in results_original["forecast"]],
-        }
-
-        model_comparison = {
-            "original":  {m["model_name"]: m["metrics"] for m in results_original["models_info"]},
-            "corrected": {m["model_name"]: m["metrics"] for m in results_corrected["models_info"]},
-        }
-
-        logger.info(
-            "Pipeline comparison done | original RMSE=%.2f corrected RMSE=%.2f",
-            results_original["metrics"]["rmse"],
-            results_corrected["metrics"]["rmse"],
-        )
-
-    except Exception as e:
-        logger.error(f"Pipeline comparison failed: {e}", exc_info=True)
-        metrics_comparison = {}
-        forecasts = {}
-        model_comparison = {}
-
-    # Step 4 — Store session for export
+    # Step 3 — Store session for export
     session_id = str(uuid.uuid4())
     correction_sessions[session_id] = {
         "df_corrected": df_corrected,
@@ -151,9 +97,6 @@ async def run_correction(dataset_id: str):
         "anomalies_corrected": len(correction_log),
         "stats": stats,
         "correction_log": correction_log,
-        "metrics_comparison": metrics_comparison,
-        "forecasts": forecasts,
-        "model_comparison": model_comparison,
     }
 
 
@@ -166,7 +109,7 @@ async def run_forecast_from_corrected(
     """Run the ML forecast pipeline on the AI-corrected dataframe."""
     session = correction_sessions.get(correction_session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Correction session not found or expired.")
+        raise HTTPException(status_code=404, detail="Correction session not found or has expired. Please rerun correction.")
 
     from ml_core.pipeline import run_pipeline
     from app.models.schemas import ForecastPoint, PerModelInfo, ModelMetrics, DetectionMode

@@ -5,7 +5,7 @@ Pipeline per anomaly:
   1. Nighttime rule      — set to 0.0, no API call
   2. Plausibility check  — dismiss values close to neighbours
   3. Low severity        — linear interpolation, no API call
-  4. High / medium       — batched Claude Sonnet call (10 per batch, 5 concurrent)
+  4. High / medium       — batched Claude Sonnet call (20 per batch, 8 concurrent, 120 item cap)
 """
 
 from __future__ import annotations
@@ -22,14 +22,16 @@ import anthropic
 logger = logging.getLogger(__name__)
 client = anthropic.AsyncAnthropic()
 
-GHI_MIN       = 0.0
-GHI_MAX       = 1200.0
-NIGHT_HOURS   = set(range(0, 5)) | set(range(21, 24))
+GHI_MIN        = 0.0
+GHI_MAX        = 1200.0
+NIGHT_HOURS    = set(range(0, 5)) | set(range(21, 24))
 
-BATCH_SIZE    = 10   # anomalies per Sonnet call — reliable JSON at this size
-MAX_CONCURRENT = 5   # concurrent batches: 5 × 10 × ~85 tokens ≈ 4,250 OTPM (Tier 2 = 32k)
-_MODEL        = "claude-sonnet-4-6"
-_MAX_TOKENS   = 1200  # 10 items × ~100 output tokens + buffer
+BATCH_SIZE     = 20   # anomalies per Sonnet call
+MAX_CONCURRENT = 8    # concurrent batches
+MAX_AI_ITEMS   = 120  # hard cap — excess items get interpolated to stay under 2 min
+OVERALL_TIMEOUT = 110 # seconds — hard wall before the endpoint times out
+_MODEL         = "claude-sonnet-4-6"
+_MAX_TOKENS    = 2200  # 20 items × ~100 output tokens + buffer
 
 
 # ── Physical helpers ──────────────────────────────────────────────────────────
@@ -175,18 +177,24 @@ async def _call_claude_batch(
 ) -> List[Dict | None]:
     async with semaphore:
         prompt = _build_batch_prompt(batch)
-        try:
-            response = await client.messages.create(
-                model=_MODEL,
-                max_tokens=_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = response.content[0].text
-            logger.debug("Sonnet batch(%d) raw (first 300): %s", len(batch), raw[:300])
-            return _parse_batch_response(raw, len(batch))
-        except Exception as exc:
-            logger.error("Sonnet batch call failed: %s", exc)
-            return [None] * len(batch)
+        for attempt in range(3):
+            try:
+                response = await client.messages.create(
+                    model=_MODEL,
+                    max_tokens=_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                raw = response.content[0].text
+                logger.debug("Sonnet batch(%d) raw (first 300): %s", len(batch), raw[:300])
+                return _parse_batch_response(raw, len(batch))
+            except anthropic.RateLimitError:
+                wait = 4 ** attempt  # 1s, 4s, 16s
+                logger.warning("Rate limited — retry %d/3 in %ds", attempt + 1, wait)
+                await asyncio.sleep(wait)
+            except Exception as exc:
+                logger.error("Sonnet batch call failed: %s", exc)
+                break
+        return [None] * len(batch)
 
 
 # ── Main correction pipeline ──────────────────────────────────────────────────
@@ -262,6 +270,21 @@ async def _correct_all_async(
             "method": method, "severity": severity,
         })
 
+    # Interpolate anything beyond the AI cap immediately so we stay under 2 min
+    if len(ai_queue) > MAX_AI_ITEMS:
+        overflow = ai_queue[MAX_AI_ITEMS:]
+        ai_queue = ai_queue[:MAX_AI_ITEMS]
+        for q in overflow:
+            val = _interpolate(corrected_df, q["i"])
+            corrected_df.iloc[q["i"], col_loc] = val
+            correction_log.append({
+                "timestamp": q["ts"], "original_value": q["bad_value"],
+                "corrected_value": round(val, 2),
+                "reasoning": "AI cap reached — interpolated from neighbours.",
+                "confidence": "medium", "method_flagged_by": q["method"],
+                "severity": q["severity"], "correction_source": "interpolation_fallback",
+            })
+
     logger.info(
         "%d anomalies → %d nighttime, %d dismissed, %d interpolated, %d queued for Sonnet",
         len(anomalies),
@@ -283,10 +306,17 @@ async def _correct_all_async(
         )
 
         semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-        batch_results = await asyncio.gather(
-            *[_call_claude_batch(b, semaphore) for b in batches],
-            return_exceptions=True,
-        )
+        try:
+            batch_results = await asyncio.wait_for(
+                asyncio.gather(
+                    *[_call_claude_batch(b, semaphore) for b in batches],
+                    return_exceptions=True,
+                ),
+                timeout=OVERALL_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("AI correction timed out after %ds — falling back to interpolation", OVERALL_TIMEOUT)
+            batch_results = [Exception("timeout")] * len(batches)
 
         for batch, results in zip(batches, batch_results):
             if isinstance(results, Exception):

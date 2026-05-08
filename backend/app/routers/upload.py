@@ -27,20 +27,8 @@ router = APIRouter()
 _BACKEND_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
-_UPLOADS_DIR = os.path.join(_BACKEND_DIR, "storage", "uploads")
 _SESSIONS_DIR = os.path.join(_BACKEND_DIR, "storage", "sessions")
-os.makedirs(_UPLOADS_DIR, exist_ok=True)
 os.makedirs(_SESSIONS_DIR, exist_ok=True)
-
-
-def _save_upload(session_id: str, filename: str, file_bytes: bytes) -> str:
-    # Save raw CSV to storage/uploads/<session_id[:8]>_<filename>.
-    safe_name = f"{session_id[:8]}_{filename}"
-    filepath  = os.path.join(_UPLOADS_DIR, safe_name)
-    with open(filepath, "wb") as f:
-        f.write(file_bytes)
-    logger.info("CSV saved: %s", filepath)
-    return filepath
 
 
 SESSION_TTL_HOURS = 2
@@ -68,11 +56,22 @@ def _read_session(session_id: str) -> dict[str, Any] | None:
 
 
 def _delete_session(session_id: str) -> None:
-    path = _session_path(session_id)
+    """Remove the session pickle and any exports tied to it."""
     try:
-        os.remove(path)
+        os.remove(_session_path(session_id))
     except FileNotFoundError:
         pass
+
+    _EXPORTS_DIR = os.path.join(_BACKEND_DIR, "storage", "exports")
+    if os.path.isdir(_EXPORTS_DIR):
+        export_prefix = f"solar_forecast_{session_id[:8]}_"
+        for fname in os.listdir(_EXPORTS_DIR):
+            if fname.startswith(export_prefix):
+                try:
+                    os.remove(os.path.join(_EXPORTS_DIR, fname))
+                    logger.info("Deleted export: %s", fname)
+                except OSError:
+                    pass
 
 
 def get_session(session_id: str) -> dict[str, Any]:
@@ -104,7 +103,7 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 def _purge_expired_sessions() -> None:
-    # Remove session files past their TTL to avoid unbounded disk growth.
+    # Remove all artifacts (session, upload, exports) for sessions past their TTL.
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         for fname in os.listdir(_SESSIONS_DIR):
@@ -115,8 +114,9 @@ def _purge_expired_sessions() -> None:
                 with open(path, "rb") as f:
                     data = pickle.load(f)
                 if now > data.get("expires_at", now):
-                    os.remove(path)
-                    logger.info("Purged expired session: %s", fname)
+                    session_id = fname[:-4]  # strip .pkl
+                    _delete_session(session_id)
+                    logger.info("Purged expired session and artifacts: %s", session_id[:8])
             except Exception:
                 pass
     except Exception as exc:
@@ -215,7 +215,6 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
     _purge_expired_sessions()
     session_id = str(uuid.uuid4())
-    filepath   = _save_upload(session_id, file.filename, file_bytes)
     file_hash  = hashlib.sha256(file_bytes).hexdigest()
 
     # Strip None values from col_map — pipeline's add_weather_features skips missing keys,
@@ -227,7 +226,6 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         "detected_cols":  clean_col_map,
         "detection_mode": detection["detection_mode"],
         "filename":       file.filename,
-        "filepath":       filepath,
         "file_hash":      file_hash,
         "meta":           meta,
         "expires_at":     datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=SESSION_TTL_HOURS),
@@ -238,7 +236,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             db,
             session_id     = session_id,
             filename       = file.filename,
-            file_path      = filepath,
+            file_path      = "",
             file_size      = len(file_bytes),
             file_hash      = file_hash,
             row_count      = meta["rows_clean"],

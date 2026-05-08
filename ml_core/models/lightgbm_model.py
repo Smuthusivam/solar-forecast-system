@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import joblib
-from lightgbm import LGBMRegressor
+from lightgbm import LGBMRegressor, early_stopping as lgb_early_stopping
 
 import sys
 import os
@@ -46,10 +46,7 @@ class LightGBMModel:
         self.min_eval_rows         = default_params.pop("min_eval_rows")
 
         self.params = default_params
-        self.model  = LGBMRegressor(
-            **self.params,
-            early_stopping_rounds=self.early_stopping_rounds,
-        )
+        self.model  = LGBMRegressor(**self.params)
         self.feature_columns = None
 
     def train(self, X_train: pd.DataFrame, y_train: pd.Series) -> None:
@@ -67,7 +64,8 @@ class LightGBMModel:
         if use_eval:
             X_tr, X_val = X_all.iloc[:split_idx], X_all.iloc[split_idx:]
             y_tr, y_val = y_all[:split_idx], y_all[split_idx:]
-            self.model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)])
+            self.model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)],
+                           callbacks=[lgb_early_stopping(self.early_stopping_rounds, verbose=False)])
         else:
             self.model.fit(X_all, y_all)
 

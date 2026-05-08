@@ -45,10 +45,7 @@ class XGBoostModel:
         self.min_eval_rows         = default_params.pop("min_eval_rows")
 
         self.params = default_params
-        self.model  = XGBRegressor(
-            **self.params,
-            early_stopping_rounds=self.early_stopping_rounds,
-        )
+        self.model  = XGBRegressor(**self.params)
         self.feature_columns = None  # set during training, reused at inference
 
     def train(self, X_train: pd.DataFrame, y_train: pd.Series) -> None:
@@ -66,7 +63,8 @@ class XGBoostModel:
         if use_eval:
             X_tr, X_val = X_all.iloc[:split_idx], X_all.iloc[split_idx:]
             y_tr, y_val = y_all[:split_idx], y_all[split_idx:]
-            self.model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
+            self.model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False,
+                           early_stopping_rounds=self.early_stopping_rounds)
         else:
             self.model.fit(X_all, y_all)
 

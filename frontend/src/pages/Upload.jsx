@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadCSV, runForecast } from "../services/api";
+import { saveForecastState } from "../services/forecastState";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
@@ -125,6 +126,8 @@ function Upload() {
     try {
       const forecastData = await runForecast(result.session_id, 24, trainSize, true);
       setForecast(forecastData);
+      // Save to shared state for NavBar navigation
+      saveForecastState(forecastData, result, fileName || result.filename);
       navigate("/dashboard", { state: { forecast: forecastData, result } });
     } catch (err) {
       setError("Model run failed. Please try again.");
@@ -272,110 +275,118 @@ function Upload() {
 
         {/* Detection Result Card */}
         {result && (
-          <div className="w-full bg-white rounded-xl shadow p-6">
-
-            {/* Mode badge */}
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-800">
-                Detection Result
-              </h2>
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full
-                ${result.detection_mode === "direct"
-                  ? "bg-green-100 text-green-700"
-                  : "bg-yellow-100 text-yellow-700"
-                }`}>
-                {result.detection_mode === "direct" ? "Direct GHI" : "GHI Estimated"}
-              </span>
-            </div>
-
-            {/* Preview Table */}
-            {result.preview && result.preview.length > 0 && (
-              <div className="mb-4 overflow-x-auto">
-                <p className="text-sm text-gray-500 mb-2">Data Preview (first 5 rows):</p>
-                <table className="text-xs w-full border-collapse">
-                  <thead>
-                    <tr>
-                      {Object.keys(result.preview[0]).map((col) => (
-                        <th key={col} className="border border-gray-200 bg-gray-50 px-2 py-1 text-left">
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.preview.map((row, i) => (
-                      <tr key={i}>
-                        {Object.values(row).map((val, j) => (
-                          <td key={j} className="border border-gray-200 px-2 py-1">
-                            {val}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Train / Test Split Selector */}
-            <div className="mb-5">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-gray-700">Train / Test Split</p>
-                <p className="text-xs text-gray-400">
-                  Train <span className="font-semibold text-gray-600">{trainSize}%</span>
-                  {" "}/ Test <span className="font-semibold text-gray-600">{100 - trainSize}%</span>
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {[70, 75, 80, 85, 90].map((pct) => (
-                  <button
-                    key={pct}
-                    onClick={() => setTrainSize(pct)}
-                    className={`flex-1 rounded-full border px-4 py-2 text-sm font-medium transition
-                      ${trainSize === pct
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-900"
-                      }`}
-                  >
-                    {pct}%
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Higher training % gives the model more data to learn from; lower gives a larger test set for evaluation.
-              </p>
-            </div>
-
-            {/* Estimated-mode warning — shown before Run Models */}
-            {result.detection_mode === "estimated" && (
-              <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3 mb-2">
-                <span className="text-amber-500 text-xl mt-0.5">⚠</span>
-                <div>
-                  <p className="font-semibold text-amber-800">No direct GHI column found</p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    No direct solar irradiance column was found. Irradiance values have been
-                    derived from your weather data, so forecast accuracy may be lower.
-                    If your CSV does have a GHI column, check the column mapping in the
-                    <strong> Columns</strong> tab.
+          result.confidence < 0.70 ? (
+            /* ── Low confidence — invalid dataset, block everything ── */
+            <div className="w-full bg-white rounded-xl shadow p-6 border-2 border-red-200">
+              <div className="flex items-start gap-4">
+                <div className="text-4xl">⛔</div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-red-700 mb-1">Invalid Dataset</h2>
+                  <p className="text-sm text-red-600 mb-3">
+                    Column detection confidence is too low ({(result.confidence * 100).toFixed(0)}% — minimum 70% required).
+                    The system could not reliably identify the required solar irradiance column in your CSV.
                   </p>
+                  <ul className="text-sm text-red-700 space-y-1 list-disc list-inside mb-4">
+                    <li>Make sure your CSV contains a GHI or irradiance column</li>
+                    <li>Check that column headers are clearly named (e.g. "GHI", "irradiance", "solar_radiation")</li>
+                    <li>Remove extra metadata rows at the top of the file</li>
+                  </ul>
+                  <button
+                    onClick={clearSession}
+                    className="rounded-full bg-red-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+                  >
+                    Upload a different file
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
+          ) : (
+            /* ── Normal flow ── */
+            <div className="w-full bg-white rounded-xl shadow p-6">
 
-            {/* Run Models Button */}
-            <button
-              onClick={handleRunForecast}
-              disabled={running}
-              className="w-full rounded-full bg-slate-900 py-3 font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
-            >
-              {running ? "Running Models..." : "Run Models"}
-            </button>
+              {/* Mode badge */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-800">
+                  Detection Result
+                </h2>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-green-100 text-green-700">
+                  Direct GHI
+                </span>
+              </div>
 
-          </div>
+              {/* Preview Table */}
+              {result.preview && result.preview.length > 0 && (
+                <div className="mb-4 overflow-x-auto">
+                  <p className="text-sm text-gray-500 mb-2">Data Preview (first 5 rows):</p>
+                  <table className="text-xs w-full border-collapse">
+                    <thead>
+                      <tr>
+                        {Object.keys(result.preview[0]).map((col) => (
+                          <th key={col} className="border border-gray-200 bg-gray-50 px-2 py-1 text-left">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.preview.map((row, i) => (
+                        <tr key={i}>
+                          {Object.values(row).map((val, j) => (
+                            <td key={j} className="border border-gray-200 px-2 py-1">
+                              {val}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Train / Test Split Selector */}
+              <div className="mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-700">Train / Test Split</p>
+                  <p className="text-xs text-gray-400">
+                    Train <span className="font-semibold text-gray-600">{trainSize}%</span>
+                    {" "}/ Test <span className="font-semibold text-gray-600">{100 - trainSize}%</span>
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {[70, 75, 80, 85, 90].map((pct) => (
+                    <button
+                      key={pct}
+                      onClick={() => setTrainSize(pct)}
+                      className={`flex-1 rounded-full border px-4 py-2 text-sm font-medium transition
+                        ${trainSize === pct
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-900"
+                        }`}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Higher training % gives the model more data to learn from; lower gives a larger test set for evaluation.
+                </p>
+              </div>
+
+              {/* Run Models Button */}
+              <button
+                onClick={handleRunForecast}
+                disabled={running}
+                className="w-full rounded-full bg-slate-900 py-3 font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                {running ? "Running Models..." : "Run Models"}
+              </button>
+
+            </div>
+          )
         )}
 
-        {/* EDA Section */}
-        {result && uploadStats && (
+        {/* EDA Section — only shown when confidence is sufficient */}
+        {result && uploadStats && result.confidence >= 0.70 && (
           <div className="w-full">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
               <div>
@@ -450,7 +461,7 @@ function Upload() {
                     <StatCard label="Min" value={uploadStats.irradiance_min.toFixed(1)} unit="W/m²" color="text-gray-500" />
                     <StatCard label="Max" value={uploadStats.irradiance_max.toFixed(1)} unit="W/m²" color="text-orange-600" />
                     <StatCard label="Detection"
-                      value={result.detection_mode}
+                      value="direct"
                       color="text-green-600" sub="GHI source" />
                     <StatCard label="Confidence"
                       value={(result.confidence * 100).toFixed(0)}
@@ -502,11 +513,6 @@ function Upload() {
                       );
                     })}
                   </div>
-                  {result.detection_mode === "estimated" && (
-                    <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                      No GHI/irradiance column found — irradiance values have been derived from your weather data.
-                    </div>
-                  )}
                 </Card>
 
                 <Card title="All Available Columns"
@@ -525,9 +531,9 @@ function Upload() {
                   subtitle="Column detection confidence and mode">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <StatCard label="Mode"
-                      value={result.detection_mode}
-                      color={result.detection_mode === "direct" ? "text-green-600" : "text-yellow-600"}
-                      sub={result.detection_mode === "direct" ? "GHI column found" : "GHI will be estimated"} />
+                      value="direct"
+                      color="text-green-600"
+                      sub="GHI column found" />
                     <StatCard label="Confidence"
                       value={(result.confidence * 100).toFixed(0)}
                       unit="%"
@@ -559,8 +565,8 @@ function Upload() {
                       unit="%"
                       color="text-green-600" sub="rows kept" />
                     <StatCard label="Detection Mode"
-                      value={result.detection_mode}
-                      color="text-indigo-600" sub="direct or estimated" />
+                      value="direct"
+                      color="text-indigo-600" sub="GHI column" />
                     <StatCard label="Warnings"
                       value={result.warnings?.length || 0}
                       color="text-gray-600" sub="non-fatal" />

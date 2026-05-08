@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Area, ComposedChart
 } from "recharts";
 import { exportCSV, exportPDF } from "../services/api";
+import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { StatCard, Card, AlertBox, PageHeader } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -13,15 +14,24 @@ import { StatCard, Card, AlertBox, PageHeader } from "../components/ui";
 function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { forecast, result, historyRun } = location.state || {};
+  const locationState = location.state || {};
+  const savedState = loadForecastState();
+  
+  // Use location state if available, otherwise fall back to saved state
+  const { forecast, result, historyRun } = locationState.forecast ? locationState : (savedState || {});
 
   const [exporting, setExporting] = useState(null);
 
+  // Save state when it changes
+  useEffect(() => {
+    if (forecast && result) {
+      saveForecastState(forecast, result, result.filename);
+    }
+  }, [forecast, result]);
+
   // ── Saved history summary mode (no full forecast arrays in DB) ─────────
   if (!forecast && historyRun) {
-    const modeClass = historyRun.detection_mode === "direct"
-      ? "bg-green-100 text-green-700"
-      : "bg-yellow-100 text-yellow-700";
+    const modeClass = "bg-green-100 text-green-700";
 
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -153,7 +163,7 @@ function Dashboard() {
       {/* ─── Header ─────────────────────────────────────────────────── */}
       <PageHeader
         title="Forecast Dashboard"
-        subtitle={`${result?.filename} — Run #${forecast.run_id} — ${forecast.detection_mode === "direct" ? "Direct GHI" : "Estimated GHI"}`}
+        subtitle={`${result?.filename} — Run #${forecast.run_id} — Direct GHI`}
         actions={[
           <button
             key="csv"

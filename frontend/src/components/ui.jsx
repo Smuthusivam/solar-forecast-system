@@ -85,7 +85,7 @@ export function PageHeader({ title, subtitle, actions }) {
     <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 px-5 py-4 shadow-sm backdrop-blur">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Solar Forecast System</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Machine Learning Approach to Solar Irradiance Prediction</p>
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
         </div>
@@ -179,7 +179,7 @@ export function NavBar() {
             SF
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold text-slate-900">Solar Forecast System</div>
+            <div className="text-sm font-semibold text-slate-900">Machine Learning Approach to Solar Irradiance Prediction</div>
             <div className="text-xs text-slate-500">Upload to forecast workflow</div>
           </div>
         </NavLink>

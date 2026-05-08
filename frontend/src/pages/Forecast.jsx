@@ -1,6 +1,6 @@
 // Forecast.jsx — User-configurable future forecast page
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
 } from "recharts";
 import { runForecast, runForecastFromCorrected } from "../services/api";
+import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { StatCard, TabNav, PageHeader } from "../components/ui";
 
 // ── Preset horizon options ────────────────────────────────────────────────────
@@ -22,10 +23,12 @@ const PRESETS = [
 export default function Forecast() {
   const location = useLocation();
   const navigate = useNavigate();
-  const sessionId           = location.state?.sessionId || location.state?.result?.session_id;
+  const savedState = loadForecastState();
+  
+  const sessionId           = location.state?.sessionId || location.state?.result?.session_id || savedState?.result?.session_id;
   const correctionSessionId = location.state?.correctionSessionId;
   const fromCorrection      = location.state?.fromCorrection || false;
-  const filename            = location.state?.filename || location.state?.result?.filename || "dataset";
+  const filename            = location.state?.filename || location.state?.result?.filename || savedState?.filename || "dataset";
 
   const [selectedPreset, setSelectedPreset] = useState(24);
   const [customHours,    setCustomHours]    = useState(96);
@@ -168,10 +171,10 @@ export default function Forecast() {
               <button
                 key={p.value}
                 onClick={() => setSelectedPreset(p.value)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium border transition
+                className={`px-4 py-2 rounded-full text-sm font-medium border transition
                   ${selectedPreset === p.value
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"}`}
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"}`}
               >
                 <span>{p.label}</span>
                 <span className="ml-1 text-xs opacity-70">({p.desc})</span>
@@ -187,18 +190,18 @@ export default function Forecast() {
                 min={1} max={8760}
                 value={customHours}
                 onChange={e => setCustomHours(Math.min(8760, Math.max(1, +e.target.value)))}
-                className="w-28 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
               />
-              <span className="text-sm text-gray-500">hours (max 8760 = 1 year)</span>
+              <span className="text-sm text-slate-500">hours (max 8760 = 1 year)</span>
             </div>
           )}
         </div>
 
         {/* Train size slider */}
         <div>
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">
-            Training Data — <span className="text-blue-600 font-semibold">{trainSize}%</span>
-            <span className="text-gray-400 ml-2 font-normal normal-case">
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-2">
+            Training Data — <span className="font-semibold text-slate-900">{trainSize}%</span>
+            <span className="ml-2 font-normal normal-case text-slate-400">
               (more training = better model, less test data)
             </span>
           </label>
@@ -207,11 +210,11 @@ export default function Forecast() {
               type="range" min={50} max={95} step={5}
               value={trainSize}
               onChange={e => setTrainSize(+e.target.value)}
-              className="flex-1 accent-blue-600"
+              className="flex-1 accent-slate-900"
             />
-            <div className="flex gap-2 text-xs text-gray-500">
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Train {trainSize}%</span>
-              <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded">Test {100 - trainSize}%</span>
+            <div className="flex gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Train {trainSize}%</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Test {100 - trainSize}%</span>
             </div>
           </div>
         </div>
@@ -220,22 +223,24 @@ export default function Forecast() {
         <button
           onClick={handleRun}
           disabled={loading || (!sessionId && !correctionSessionId)}
-          className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading
-            ? <><span className="animate-spin inline-block">⚙</span> Running forecast…</>
-            : `Run ${horizon}h Forecast`}
+          {loading ? (
+            <><span className="animate-spin inline-block">⚙</span> Running forecast…</>
+          ) : (
+            `Run ${horizon}h Forecast`
+          )}
         </button>
 
         {!sessionId && !correctionSessionId && (
-          <p className="text-xs text-red-500 text-center">
+          <p className="text-center text-xs text-rose-600">
             No dataset session found.{" "}
-            <button onClick={() => navigate("/")} className="underline">Upload a CSV first</button>.
+            <button onClick={() => navigate("/")} className="font-medium underline underline-offset-2">Upload a CSV first</button>.
           </p>
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             ⚠ {error}
           </div>
         )}

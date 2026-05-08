@@ -4,8 +4,7 @@ import { getHistory, getForecastPoints } from "../services/api";
 import { R2Badge, AlertBox, PageHeader } from "../components/ui";
 
 const MODE_COLORS = {
-  direct:    { bg: "bg-green-100",  text: "text-green-700"  },
-  estimated: { bg: "bg-yellow-100", text: "text-yellow-700" },
+  direct: { bg: "bg-green-100", text: "text-green-700" },
 };
 
 function History() {

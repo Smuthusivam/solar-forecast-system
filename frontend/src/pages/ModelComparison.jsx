@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, Cell,
   ReferenceLine
 } from "recharts";
+import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { Card, PageHeader } from "../components/ui";
 
 const MODEL_COLORS = {
@@ -51,16 +52,27 @@ function getModelStatus(trainR2, testR2, trainRmse, testRmse) {
 function ModelComparison() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { forecast, result } = location.state || {};
+  const locationState = location.state || {};
+  const savedState = loadForecastState();
+  
+  // Use location state if available, otherwise fall back to saved state
+  const { forecast, result } = locationState.forecast ? locationState : (savedState || {});
 
   const [view, setView] = useState("test");   // "train" | "test" | "both"
+
+  // Save state when it changes
+  useEffect(() => {
+    if (forecast && result) {
+      saveForecastState(forecast, result, result.filename);
+    }
+  }, [forecast, result]);
 
   if (!forecast) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
-        <p className="text-gray-500">No forecast data found.</p>
+        <p className="text-slate-500">No forecast data found.</p>
         <button onClick={() => navigate("/")}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg">
+          className="rounded-full bg-slate-900 px-6 py-2 text-white transition hover:bg-slate-800">
           Go Back to Upload
         </button>
       </div>
@@ -161,8 +173,8 @@ function ModelComparison() {
       </div>
 
       {/* View selector */}
-      <div className="flex gap-2 mb-6">
-        <span className="text-sm text-gray-500 self-center">View metrics:</span>
+      <div className="mb-6 flex gap-2">
+        <span className="self-center text-sm text-slate-500">View metrics:</span>
         {[
           { id: "test",  label: "Test Only" },
           { id: "train", label: "Train Only" },
@@ -170,10 +182,10 @@ function ModelComparison() {
         ].map(v => (
           <button key={v.id}
             onClick={() => setView(v.id)}
-            className={`px-4 py-1 rounded-full text-sm font-medium transition
+            className={`rounded-full px-4 py-2 text-sm font-medium transition
               ${view === v.id
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"}`}>
+                ? "bg-slate-900 text-white"
+                : "border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50"}`}>
             {v.label}
           </button>
         ))}

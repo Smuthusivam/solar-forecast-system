@@ -155,3 +155,31 @@ export function MetricCard({ label, original, corrected, higherIsBetter = false 
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 export const fmtWm2 = (v) => v != null ? [`${Number(v).toFixed(2)} W/m²`] : ["—"];
+// ── NavBar ───────────────────────────────────────────────────────────────────
+import { NavLink } from "react-router-dom";
+
+export function NavBar() {
+  const items = [
+    { to: "/", label: "Upload" },
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/compare", label: "Model Comparison" },
+    { to: "/anomalies", label: "Anomaly" },
+    { to: "/forecast", label: "Forecast" },
+  ];
+
+  return (
+    <nav className="w-full border-b border-gray-100 mb-4">
+      <div className="max-w-6xl mx-auto flex gap-2 px-2">
+        {items.map((it) => (
+          <NavLink
+            key={it.to}
+            to={it.to}
+            className={({ isActive }) => `px-3 py-1 text-sm font-medium transition ${isActive ? "text-blue-600" : "text-gray-600 hover:text-gray-800"}`}
+          >
+            {it.label}
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+  );
+}

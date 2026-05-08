@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
 } from "recharts";
-import { StatCard, Card, TabNav } from "../components/ui";
+import { StatCard, Card, TabNav, PageHeader } from "../components/ui";
 
 function Upload() {
   const navigate = useNavigate();
@@ -99,11 +99,18 @@ function Upload() {
     setError(null);
 
     try {
-      const data = await uploadCSV(file);  // calls api.js
-      setResult(data);                     // store response
+      const data = await uploadCSV(file);
+      setResult(data);
       setForecast(null);
     } catch (err) {
-      setError("Upload failed. Make sure the backend is running.");
+      const detail = err?.response?.data?.detail;
+      if (detail?.code === "irrelevant_dataset") {
+        setError(detail.message);
+      } else if (detail?.code === "preprocessing_failed") {
+        setError(detail.message);
+      } else {
+        setError("Upload failed. Make sure the backend is running.");
+      }
     } finally {
       setUploading(false);
     }
@@ -171,24 +178,19 @@ function Upload() {
     <div className="min-h-screen bg-gray-50 px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
 
-        {/* Title */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-3xl">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">
-              Solar Irradiance Forecasting
-            </h1>
-            <p className="text-gray-500">
-              Upload any solar or weather CSV to get started
-            </p>
-          </div>
-
-          <button
-            onClick={() => navigate("/history")}
-            className="self-start rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-          >
-            View History
-          </button>
-        </div>
+        <PageHeader
+          title="Solar Irradiance Forecasting"
+          subtitle="Upload a solar or weather CSV to begin the forecast workflow"
+          actions={[
+            <button
+              key="history"
+              onClick={() => navigate("/history")}
+              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              View History
+            </button>,
+          ]}
+        />
 
         {/* Drop Zone */}
         <div
@@ -207,7 +209,7 @@ function Upload() {
           <p className="text-gray-400 text-sm mb-4">or</p>
 
           {/* File input */}
-          <label className="cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition">
+          <label className="cursor-pointer rounded-full border border-slate-300 bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
             Browse File
             <input
               type="file"
@@ -236,7 +238,7 @@ function Upload() {
             <button
               onClick={handleUpload}
               disabled={uploading}
-              className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
+              className="rounded-full bg-slate-900 px-8 py-3 font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
               {uploading ? "Uploading..." : "Upload"}
             </button>
@@ -245,7 +247,13 @@ function Upload() {
 
         {/* Error Message */}
         {error && (
-          <p className="text-red-500 font-medium">{error}</p>
+          <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
+            <span className="text-red-500 text-xl mt-0.5">✕</span>
+            <div>
+              <p className="font-semibold text-red-700">Upload failed</p>
+              <p className="text-sm text-red-600 mt-1">{error}</p>
+            </div>
+          </div>
         )}
 
         {(result || forecast) && (
@@ -323,10 +331,10 @@ function Upload() {
                   <button
                     key={pct}
                     onClick={() => setTrainSize(pct)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition
+                    className={`flex-1 rounded-full border px-4 py-2 text-sm font-medium transition
                       ${trainSize === pct
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-900"
                       }`}
                   >
                     {pct}%
@@ -338,11 +346,28 @@ function Upload() {
               </p>
             </div>
 
+            {/* Estimated-mode warning — shown before Run Models */}
+            {result.detection_mode === "estimated" && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3 mb-2">
+                <span className="text-amber-500 text-xl mt-0.5">⚠</span>
+                <div>
+                  <p className="font-semibold text-amber-800">No direct GHI column found</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Solar irradiance will be <strong>estimated</strong> from weather variables
+                    (temperature, humidity, cloud cover) using the Angstrom-Prescott model.
+                    Forecast accuracy will be lower than with a direct GHI measurement.
+                    If your CSV does have a GHI column, check the column mapping in the
+                    <strong> Columns</strong> tab.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Run Models Button */}
             <button
               onClick={handleRunForecast}
               disabled={running}
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition"
+              className="w-full rounded-full bg-slate-900 py-3 font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
               {running ? "Running Models..." : "Run Models"}
             </button>

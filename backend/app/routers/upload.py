@@ -136,6 +136,16 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
     try:
         detection = detect_columns(columns, sample_rows)
+    except ValueError as exc:
+        # Irrelevant dataset — no solar or weather columns found at all
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code":    "irrelevant_dataset",
+                "message": str(exc),
+                "field":   None,
+            },
+        )
     except Exception as exc:
         logger.error("Column detection failed: %s", exc)
         raise HTTPException(

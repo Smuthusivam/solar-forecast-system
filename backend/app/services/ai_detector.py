@@ -226,20 +226,25 @@ def _build_result(
     if detected["irradiance"]:
         detection_mode = "direct"
     else:
-        detection_mode = "estimated"
-        warnings.append(
-            "No irradiance column detected — GHI will be estimated "
-            "from weather variables using the Angstrom-Prescott formula"
-        )
-
+        # No irradiance — check if we have enough weather columns to estimate GHI
         has_weather = any(
             detected.get(v) for v in ["temperature", "humidity", "cloud_cover"]
         )
+
         if not has_weather:
-            warnings.append(
-                "WARNING: No weather columns detected either — "
-                "GHI estimation may be inaccurate"
+            # Nothing useful — reject immediately rather than producing meaningless results
+            raise ValueError(
+                "This dataset does not appear to contain solar irradiance or weather data. "
+                "Please upload a CSV with at least one of: a GHI/irradiance column, "
+                "temperature, humidity, or cloud cover."
             )
+
+        detection_mode = "estimated"
+        warnings.append(
+            "No GHI/irradiance column found — solar irradiance will be estimated "
+            "from weather variables (Angstrom-Prescott model). "
+            "Results will be less accurate than with a direct GHI measurement."
+        )
 
     confidence = float(mapping.get("confidence", LOW_CONFIDENCE))
 

@@ -19,8 +19,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if BACKEND_DIR not in sys.path:
-    sys.path.insert(0, BACKEND_DIR)
+ROOT_DIR    = os.path.dirname(BACKEND_DIR)
+for p in (BACKEND_DIR, ROOT_DIR):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 from app.database import Base
 

@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, save_dataset
 from app.models.schemas import DetectedColumns, DetectionMode, UploadResponse
 from app.services.ai_detector import detect_columns
-from app.services.preprocessing import preprocess
+from ml_core.preprocessing import preprocess
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,7 +59,7 @@ def get_session(session_id: str) -> dict[str, Any]:
             },
         )
 
-    if datetime.utcnow() > session["expires_at"]:
+    if datetime.now(timezone.utc).replace(tzinfo=None) > session["expires_at"]:
         _sessions.pop(session_id, None)
         raise HTTPException(
             status_code=410,
@@ -75,7 +75,7 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 def _purge_expired_sessions() -> None:
     # Remove sessions past their TTL to avoid unbounded memory growth.
-    now     = datetime.utcnow()
+    now     = datetime.now(timezone.utc).replace(tzinfo=None)
     expired = [sid for sid, s in _sessions.items() if now > s["expires_at"]]
     for sid in expired:
         _sessions.pop(sid, None)
@@ -180,7 +180,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         "filepath":       filepath,
         "file_hash":      file_hash,
         "meta":           meta,
-        "expires_at":     datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS),
+        "expires_at":     datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=SESSION_TTL_HOURS),
     }
 
     try:

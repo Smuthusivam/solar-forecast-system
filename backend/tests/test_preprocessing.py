@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.services.preprocessing import (
+from ml_core.preprocessing import (
     MIN_ROWS,
     _clip_to_bounds,
     _coerce_numeric,

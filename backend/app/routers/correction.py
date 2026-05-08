@@ -157,6 +157,76 @@ async def run_correction(dataset_id: str):
     }
 
 
+@router.post("/forecast/{correction_session_id}")
+async def run_forecast_from_corrected(
+    correction_session_id: str,
+    horizon: int = 24,
+    train_size: int = 80,
+):
+    """Run the ML forecast pipeline on the AI-corrected dataframe."""
+    session = correction_sessions.get(correction_session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Correction session not found or expired.")
+
+    from ml_core.pipeline import run_pipeline
+    from app.models.schemas import ForecastPoint, PerModelInfo, ModelMetrics, DetectionMode
+    import asyncio
+
+    df_corrected = session["df_corrected"]
+    dataset_id = session["dataset_id"]
+
+    try:
+        upload_session = get_session(dataset_id)
+        col_map = upload_session["detected_cols"]
+        detection_mode = upload_session["detection_mode"]
+        filename = upload_session["filename"]
+    except HTTPException:
+        col_map = session.get("column_map", {})
+        detection_mode = "direct"
+        filename = dataset_id
+
+    try:
+        result = await asyncio.to_thread(
+            run_pipeline,
+            df_corrected,
+            col_map,
+            horizon,
+            detection_mode,
+            train_size,
+            False,
+        )
+    except Exception as exc:
+        logger.error("Corrected forecast pipeline failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Forecast pipeline failed: {exc}")
+
+    forecast_points = [
+        {"timestamp": p["timestamp"], "predicted": p["predicted"],
+         "actual": p.get("actual"), "lower": p.get("lower"), "upper": p.get("upper")}
+        for p in result["forecast"]
+    ]
+    future_points = [
+        {"timestamp": p["timestamp"], "predicted": p["predicted"],
+         "actual": p.get("actual"), "lower": p.get("lower"), "upper": p.get("upper")}
+        for p in result.get("future_forecast", [])
+    ]
+
+    return {
+        "session_id": dataset_id,
+        "correction_session_id": correction_session_id,
+        "run_id": -1,
+        "horizon": horizon,
+        "detection_mode": detection_mode,
+        "best_model": result["best_model"],
+        "forecast": forecast_points,
+        "future_forecast": future_points,
+        "metrics": result["metrics"],
+        "models_info": result["models_info"],
+        "feature_importance": result.get("feature_importance"),
+        "rows_processed": result.get("rows_processed", 0),
+        "source": "corrected",
+    }
+
+
 @router.get("/log/{session_id}")
 async def get_correction_log(session_id: str):
     """Return the full correction log for a completed correction session."""

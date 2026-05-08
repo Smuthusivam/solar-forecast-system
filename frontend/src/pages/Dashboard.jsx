@@ -161,10 +161,6 @@ function Dashboard() {
             className="border border-gray-300 text-gray-600 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50">
             {exporting === "pdf" ? "..." : "PDF"}
           </button>
-          <button onClick={() => navigate("/forecast", { state: { sessionId: result.session_id, filename: result.filename } })}
-            className="border border-green-300 text-green-600 px-4 py-2 rounded-lg text-sm hover:bg-green-50">
-            Forecast →
-          </button>
           <button onClick={() => navigate("/compare", { state: { forecast, result } })}
             className="border border-blue-300 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">
             Models →

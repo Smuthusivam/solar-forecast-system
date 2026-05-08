@@ -182,7 +182,18 @@ export function downloadComparisonCSV(correctionResult) {
 export async function runCorrection(sessionId) {
   const response = await API.post(`/api/correction/run/${sessionId}`);
   return response.data;
-  // Returns: { correction_id, anomaly_count, anomalies_corrected,
-  //            stats, correction_log, metrics_comparison,
-  //            model_comparison, forecasts }
+}
+
+// ─────────────────────────────────────────
+// 8. RUN FORECAST ON CORRECTED DATA
+// Uses the AI-corrected dataframe from a
+// completed correction session
+// ─────────────────────────────────────────
+export async function runForecastFromCorrected(correctionSessionId, horizonHours = 24, trainSize = 80) {
+  const response = await API.post(
+    `/api/correction/forecast/${correctionSessionId}`,
+    null,
+    { params: { horizon: horizonHours, train_size: trainSize } }
+  );
+  return response.data;
 }

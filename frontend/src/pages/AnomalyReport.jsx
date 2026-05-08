@@ -1,7 +1,7 @@
 // AnomalyReport.jsx — Full anomaly detection + AI correction + model comparison page
 
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, BarChart, Bar, ScatterChart,
@@ -23,8 +23,11 @@ import {
 // ── Main component ───────────────────────────────────────────────────────────
 export default function AnomalyReport({ datasetId }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const routeSessionId = location.state?.result?.session_id || new URLSearchParams(location.search).get("session_id");
   const sessionId = datasetId || routeSessionId;
+  const forecast = location.state?.forecast;
+  const result   = location.state?.result;
 
   const [anomalies,        setAnomalies]        = useState([]);
   const [loadingAnomalies, setLoadingAnomalies] = useState(true);
@@ -172,9 +175,18 @@ export default function AnomalyReport({ datasetId }) {
 
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Anomaly Report</h1>
-          <p className="text-sm text-gray-500 mt-0.5">AI-powered detection, validation &amp; correction</p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/compare", { state: { forecast, result } })}
+            className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition"
+            title="Back to Models"
+          >
+            ←
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Anomaly Report</h1>
+            <p className="text-sm text-gray-500 mt-0.5">AI-powered detection, validation &amp; correction</p>
+          </div>
         </div>
         <div className="flex gap-3 flex-wrap">
           {correctionResult && (
@@ -190,6 +202,19 @@ export default function AnomalyReport({ datasetId }) {
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
               >
                 Download Comparison CSV
+              </button>
+              <button
+                onClick={() => navigate("/forecast", {
+                  state: {
+                    correctionSessionId: correctionResult.session_id,
+                    sessionId,
+                    filename: result?.filename || "corrected dataset",
+                    fromCorrection: true,
+                  }
+                })}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
+              >
+                Go to Forecast →
               </button>
             </>
           )}

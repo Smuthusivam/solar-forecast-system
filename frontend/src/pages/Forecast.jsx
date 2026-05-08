@@ -7,7 +7,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceLine, Cell,
 } from "recharts";
-import { runForecast } from "../services/api";
+import { runForecast, runForecastFromCorrected } from "../services/api";
 import { StatCard, TabNav } from "../components/ui";
 
 // ── Preset horizon options ────────────────────────────────────────────────────
@@ -22,8 +22,10 @@ const PRESETS = [
 export default function Forecast() {
   const location = useLocation();
   const navigate = useNavigate();
-  const sessionId = location.state?.sessionId || location.state?.result?.session_id;
-  const filename  = location.state?.filename  || location.state?.result?.filename || "dataset";
+  const sessionId           = location.state?.sessionId || location.state?.result?.session_id;
+  const correctionSessionId = location.state?.correctionSessionId;
+  const fromCorrection      = location.state?.fromCorrection || false;
+  const filename            = location.state?.filename || location.state?.result?.filename || "dataset";
 
   const [selectedPreset, setSelectedPreset] = useState(24);
   const [customHours,    setCustomHours]    = useState(96);
@@ -36,10 +38,12 @@ export default function Forecast() {
   const horizon = selectedPreset === 0 ? customHours : selectedPreset;
 
   const handleRun = async () => {
-    if (!sessionId) { setError("No session found. Upload a CSV first."); return; }
+    if (!sessionId && !correctionSessionId) { setError("No session found. Upload a CSV first."); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const res = await runForecast(sessionId, horizon, trainSize);
+      const res = correctionSessionId
+        ? await runForecastFromCorrected(correctionSessionId, horizon, trainSize)
+        : await runForecast(sessionId, horizon, trainSize);
       setResult(res);
       setActiveTab("chart");
     } catch (e) {
@@ -111,13 +115,26 @@ export default function Forecast() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Future Forecast</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{filename} — predict irradiance beyond your data</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {filename} — predict irradiance beyond your data
+            {fromCorrection && (
+              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">
+                Using AI-corrected data
+              </span>
+            )}
+          </p>
         </div>
         <button onClick={() => navigate(-1)}
           className="text-sm text-gray-500 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
           ← Back
         </button>
       </div>
+
+      {fromCorrection && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-sm text-purple-800">
+          Forecasting on <strong>AI-corrected dataset</strong> — anomalies have been detected and corrected before training.
+        </div>
+      )}
 
       {/* ── Config panel ────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
@@ -184,7 +201,7 @@ export default function Forecast() {
         {/* Run button */}
         <button
           onClick={handleRun}
-          disabled={loading || !sessionId}
+          disabled={loading || (!sessionId && !correctionSessionId)}
           className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
         >
           {loading
@@ -192,7 +209,7 @@ export default function Forecast() {
             : `Run ${horizon}h Forecast`}
         </button>
 
-        {!sessionId && (
+        {!sessionId && !correctionSessionId && (
           <p className="text-xs text-red-500 text-center">
             No dataset session found.{" "}
             <button onClick={() => navigate("/")} className="underline">Upload a CSV first</button>.

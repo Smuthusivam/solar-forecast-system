@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // All API calls go to FastAPI; override with VITE_API_BASE_URL for deployments.
-const API_BASE_URL = import.meta?.env?.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta?.env?.VITE_API_BASE_URL || "";
 
 const API = axios.create({
   baseURL: API_BASE_URL,

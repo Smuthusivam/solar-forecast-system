@@ -159,7 +159,7 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
 
     # Layer 1: let pandas figure out the format automatically
     try:
-        parsed = pd.to_datetime(df["timestamp"], infer_datetime_format=True)
+        parsed = pd.to_datetime(df["timestamp"])
         if parsed.isna().sum() / len(parsed) < 0.5:
             logger.info("Timestamps parsed via pandas auto-detect")
     except Exception:
@@ -421,9 +421,7 @@ def preprocess(
     # Step 9: make sure we ended up with something usable
     if "irradiance" not in df.columns:
         raise ValueError(
-            "No irradiance column available after preprocessing. "
-            "Upload a CSV with a GHI/irradiance column or at least "
-            "one weather variable (temperature, cloud cover, or humidity)."
+            "No irradiance column found after preprocessing. Please upload a CSV containing a GHI/irradiance column or at least one weather variable (temperature, cloud cover, or humidity)."
         )
 
     if len(df) < MIN_ROWS:

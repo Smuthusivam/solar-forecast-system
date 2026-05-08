@@ -33,9 +33,9 @@ export function Card({ title, subtitle, children, right }) {
 }
 
 // ── Section (border variant used in AnomalyReport / Forecast) ─────────────────
-export function Section({ title, subtitle, children }) {
+export function Section({ title, subtitle, children, className = "" }) {
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className={`mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
       <div className="border-b border-slate-100 px-5 py-4">
         <h3 className="text-base font-semibold text-slate-900">{title}</h3>
         {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}

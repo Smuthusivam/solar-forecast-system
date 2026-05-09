@@ -53,6 +53,7 @@ services:
       - backend_exports:/app/backend/storage/exports
       - backend_models:/app/ml_core/saved_models
       - backend_sessions:/app/backend/storage/sessions
+      - backend_corrections:/app/backend/storage/corrections
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     networks:
@@ -88,3 +89,4 @@ volumes:
   backend_exports:
   backend_models:
   backend_sessions:
+  backend_corrections:

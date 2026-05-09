@@ -8,60 +8,65 @@ Endpoints:
 
 import asyncio
 import io
+import os
+import pickle
 import uuid
 import logging
-from typing import Dict, Any
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.routers.upload import get_session
+from app.routers.upload import get_session, _SESSIONS_DIR
 from ml_core.anomaly import detect_anomalies
 from app.services.anomaly_corrector import _correct_all_async, compute_correction_stats
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/correction", tags=["correction"])
 
-# ─────────────────────────────────────────────────────────────────────────────
-# In-memory session store  (replace with Redis / DB in production)
-# ─────────────────────────────────────────────────────────────────────────────
-upload_sessions: Dict[str, Any] = {}   # populated by upload router
-correction_sessions: Dict[str, Any] = {}
+_CORRECTION_DIR = os.path.join(os.path.dirname(_SESSIONS_DIR), "corrections")
+os.makedirs(_CORRECTION_DIR, exist_ok=True)
+
+
+def _correction_path(session_id: str) -> str:
+    return os.path.join(_CORRECTION_DIR, f"{session_id}.pkl")
+
+
+def _write_correction(session_id: str, data: dict) -> None:
+    with open(_correction_path(session_id), "wb") as f:
+        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _read_correction(session_id: str) -> dict | None:
+    path = _correction_path(session_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception as exc:
+        logger.warning("Failed to load correction session %s: %s", session_id, exc)
+        return None
 
 
 def register_upload_session(dataset_id: str, df: pd.DataFrame, column_map: dict):
-    """Called by the upload router after preprocessing."""
-    upload_sessions[dataset_id] = {"df": df, "column_map": column_map}
+    """Called by the upload router after preprocessing — no-op now since upload sessions are disk-backed."""
+    pass
 
 
 @router.post("/run/{dataset_id}")
 async def run_correction(dataset_id: str):
-    """
-    Full correction pipeline:
-    1. Load dataset from upload session
-    2. Detect anomalies
-    3. AI-correct each anomaly
-    4. Run ML models on original + corrected data
-    5. Return side-by-side comparison
-    """
-    session = upload_sessions.get(dataset_id)
-    if not session:
-        try:
-            upload_session = get_session(dataset_id)
-            session = {
-                "df": upload_session["df"],
-                "column_map": upload_session["detected_cols"],
-            }
-            upload_sessions[dataset_id] = session
-        except HTTPException:
-            raise HTTPException(
-                status_code=404,
-                detail="Dataset not found. Please upload a CSV first via /api/upload."
-            )
+    # Load upload session from disk (shared across workers)
+    try:
+        upload_session = get_session(dataset_id)
+    except HTTPException:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found. Please upload a CSV first via /api/upload."
+        )
 
-    df_original: pd.DataFrame = session["df"]
-    column_map: dict = session["column_map"]
+    df_original: pd.DataFrame = upload_session["df"]
+    column_map: dict = upload_session["detected_cols"]
 
     # Step 1 — Detect anomalies
     detection_result = detect_anomalies(df_original)
@@ -76,27 +81,28 @@ async def run_correction(dataset_id: str):
             "stats": {},
         }
 
-    # Step 2 — AI correction (concurrent async calls)
+    # Step 2 — AI correction
     df_corrected, correction_log = await _correct_all_async(
         df_original, anomalies, column_map
     )
     stats = compute_correction_stats(correction_log)
 
-    # Step 3 — Store session for export
+    # Step 3 — Persist correction session to disk so any worker can read it
     session_id = str(uuid.uuid4())
-    correction_sessions[session_id] = {
-        "df_corrected": df_corrected,
+    _write_correction(session_id, {
+        "df_corrected":   df_corrected,
         "correction_log": correction_log,
-        "dataset_id": dataset_id,
-    }
+        "dataset_id":     dataset_id,
+        "column_map":     column_map,
+    })
 
     return {
-        "dataset_id": dataset_id,
-        "session_id": session_id,
-        "anomaly_count": len(anomalies),
+        "dataset_id":         dataset_id,
+        "session_id":         session_id,
+        "anomaly_count":      len(anomalies),
         "anomalies_corrected": len(correction_log),
-        "stats": stats,
-        "correction_log": correction_log,
+        "stats":              stats,
+        "correction_log":     correction_log,
     }
 
 
@@ -107,26 +113,22 @@ async def run_forecast_from_corrected(
     train_size: int = 80,
 ):
     """Run the ML forecast pipeline on the AI-corrected dataframe."""
-    session = correction_sessions.get(correction_session_id)
+    session = _read_correction(correction_session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Correction session not found or has expired. Please rerun correction.")
 
     from ml_core.pipeline import run_pipeline
-    from app.models.schemas import ForecastPoint, PerModelInfo, ModelMetrics, DetectionMode
-    import asyncio
 
     df_corrected = session["df_corrected"]
-    dataset_id = session["dataset_id"]
+    dataset_id   = session["dataset_id"]
 
     try:
-        upload_session = get_session(dataset_id)
-        col_map = upload_session["detected_cols"]
-        detection_mode = upload_session["detection_mode"]
-        filename = upload_session["filename"]
+        upload_session  = get_session(dataset_id)
+        col_map         = upload_session["detected_cols"]
+        detection_mode  = upload_session["detection_mode"]
     except HTTPException:
-        col_map = session.get("column_map", {})
+        col_map        = session.get("column_map", {})
         detection_mode = "direct"
-        filename = dataset_id
 
     try:
         result = await asyncio.to_thread(
@@ -154,26 +156,25 @@ async def run_forecast_from_corrected(
     ]
 
     return {
-        "session_id": dataset_id,
+        "session_id":            dataset_id,
         "correction_session_id": correction_session_id,
-        "run_id": -1,
-        "horizon": horizon,
-        "detection_mode": detection_mode,
-        "best_model": result["best_model"],
-        "forecast": forecast_points,
-        "future_forecast": future_points,
-        "metrics": result["metrics"],
-        "models_info": result["models_info"],
-        "feature_importance": result.get("feature_importance"),
-        "rows_processed": result.get("rows_processed", 0),
-        "source": "corrected",
+        "run_id":                -1,
+        "horizon":               horizon,
+        "detection_mode":        detection_mode,
+        "best_model":            result["best_model"],
+        "forecast":              forecast_points,
+        "future_forecast":       future_points,
+        "metrics":               result["metrics"],
+        "models_info":           result["models_info"],
+        "feature_importance":    result.get("feature_importance"),
+        "rows_processed":        result.get("rows_processed", 0),
+        "source":                "corrected",
     }
 
 
 @router.get("/log/{session_id}")
 async def get_correction_log(session_id: str):
-    """Return the full correction log for a completed correction session."""
-    session = correction_sessions.get(session_id)
+    session = _read_correction(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
     return {
@@ -187,7 +188,7 @@ async def get_correction_log(session_id: str):
 @router.get("/export/{session_id}")
 async def export_corrected_csv(session_id: str):
     """Download the AI-corrected dataset as a CSV file."""
-    session = correction_sessions.get(session_id)
+    session = _read_correction(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired.")
 

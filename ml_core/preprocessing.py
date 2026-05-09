@@ -394,12 +394,13 @@ def preprocess(
     expected_hours = int((df.index[-1] - df.index[0]).total_seconds() / 3600) + 1
     missing_hours  = max(0, expected_hours - len(df))
 
-    # Outliers in irradiance before fill (IQR on non-null values)
-    irr_raw = df["irradiance"].dropna()
-    if len(irr_raw) > 0:
-        q1, q3 = irr_raw.quantile(0.25), irr_raw.quantile(0.75)
+    # Outliers in irradiance — only daytime values (>0) to avoid night zeros skewing IQR
+    irr_day = df["irradiance"].dropna()
+    irr_day = irr_day[irr_day > 0]
+    if len(irr_day) > 0:
+        q1, q3 = irr_day.quantile(0.25), irr_day.quantile(0.75)
         iqr    = q3 - q1
-        outlier_count = int(((irr_raw < q1 - 1.5 * iqr) | (irr_raw > q3 + 1.5 * iqr)).sum())
+        outlier_count = int(((irr_day < q1 - 1.5 * iqr) | (irr_day > q3 + 1.5 * iqr)).sum())
     else:
         outlier_count = 0
 

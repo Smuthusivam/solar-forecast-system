@@ -562,7 +562,7 @@ function Upload() {
               <>
                 {/* Summary health cards */}
                 <Card title="Dataset Health" subtitle="Key quality indicators detected during preprocessing">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <StatCard label="Duplicate Rows"
                       value={(uploadStats.duplicate_rows ?? 0).toLocaleString()}
                       color={uploadStats.duplicate_rows > 0 ? "text-orange-500" : "text-green-600"}
@@ -575,10 +575,6 @@ function Upload() {
                       value={(uploadStats.total_missing_cells ?? 0).toLocaleString()}
                       color={uploadStats.total_missing_cells > 0 ? "text-orange-500" : "text-green-600"}
                       sub="across all columns" />
-                    <StatCard label="Statistical Outliers"
-                      value={(uploadStats.outlier_count ?? 0).toLocaleString()}
-                      color={uploadStats.outlier_count > 50 ? "text-red-500" : uploadStats.outlier_count > 0 ? "text-orange-500" : "text-green-600"}
-                      sub="unusual GHI values detected" />
                   </div>
                 </Card>
 

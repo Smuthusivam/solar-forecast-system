@@ -224,7 +224,7 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.set_index("timestamp").sort_index()
 
-    n_dupes = df.index.duplicated().sum()
+    n_dupes = int(df.index.duplicated().sum())
     if n_dupes > 0:
         logger.warning("Removed %d duplicate timestamps", n_dupes)
         df = df[~df.index.duplicated(keep="last")]
@@ -240,7 +240,7 @@ def _coerce_numeric(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _clip_to_bounds(df: pd.DataFrame) -> pd.DataFrame:
+def _clip_to_bounds(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     # Out-of-range values are sensor errors, so replace them with NaN rather than clamping.
     bounds = {
         "irradiance":     (IRRADIANCE_MIN, IRRADIANCE_MAX),
@@ -251,17 +251,19 @@ def _clip_to_bounds(df: pd.DataFrame) -> pd.DataFrame:
         "sunshine_hours": (SUN_MIN,   SUN_MAX),
     }
 
+    total_clipped = 0
     for col, (lo, hi) in bounds.items():
         if col in df.columns:
-            n_out = ((df[col] < lo) | (df[col] > hi)).sum()
+            n_out = int(((df[col] < lo) | (df[col] > hi)).sum())
             if n_out > 0:
                 logger.warning(
                     "Column '%s': %d values outside [%.1f, %.1f] → set to NaN",
                     col, n_out, lo, hi,
                 )
                 df[col] = df[col].where((df[col] >= lo) & (df[col] <= hi))
+                total_clipped += n_out
 
-    return df
+    return df, total_clipped
 
 
 def _fill_missing(df: pd.DataFrame) -> pd.DataFrame:
@@ -314,7 +316,7 @@ def preprocess(
 
     # Step 1: parse the raw CSV bytes
     df = parse_csv(file_bytes)
-    rows_raw = len(df)
+    rows_raw = len(df)  # total rows in the original CSV (before any dropping)
 
     # Step 2: build NSRDB timestamp before standardise_columns drops the date columns
     col_lower_map = {c.strip().lower(): c for c in df.columns}
@@ -347,6 +349,7 @@ def preprocess(
     df = standardise_columns(df, detected_cols)
 
     # Step 4: parse timestamps into a DatetimeIndex
+    rows_before_ts = len(df)
     df = parse_timestamps(df)
 
     # Step 5: drop any rows where the timestamp couldn't be parsed
@@ -355,9 +358,12 @@ def preprocess(
         logger.warning("Dropping %d rows with NaT timestamps", nat_count)
         df = df[df.index.notna()]
 
+    # Duplicate timestamps were removed inside parse_timestamps
+    duplicate_rows = rows_before_ts - len(df) - int(nat_count)
+
     # Step 6: coerce to float and remove physically impossible values
     df = _coerce_numeric(df)
-    df = _clip_to_bounds(df)
+    df, clipped_count = _clip_to_bounds(df)
 
     # Step 7: validate irradiance BEFORE filling — once filled NaNs become 0 and are invisible
     if "irradiance" not in df.columns:
@@ -381,6 +387,39 @@ def preprocess(
             "Too little data to produce a reliable forecast — please check your CSV."
         )
 
+    # ── Snapshot quality metrics BEFORE filling (NaNs are still visible here) ──
+    rows_after_drop = len(df)   # rows remaining after timestamp parsing & NaT drops
+    total_missing_cells = int(df.isna().sum().sum())
+
+    expected_hours = int((df.index[-1] - df.index[0]).total_seconds() / 3600) + 1
+    missing_hours  = max(0, expected_hours - len(df))
+
+    # Outliers in irradiance before fill (IQR on non-null values)
+    irr_raw = df["irradiance"].dropna()
+    if len(irr_raw) > 0:
+        q1, q3 = irr_raw.quantile(0.25), irr_raw.quantile(0.75)
+        iqr    = q3 - q1
+        outlier_count = int(((irr_raw < q1 - 1.5 * iqr) | (irr_raw > q3 + 1.5 * iqr)).sum())
+    else:
+        outlier_count = 0
+
+    # Per-column quality — computed on pre-fill data so missing counts are real
+    column_quality = []
+    for col in df.columns:
+        series  = df[col]
+        missing = int(series.isna().sum())
+        numeric = pd.to_numeric(series, errors="coerce").dropna()
+        column_quality.append({
+            "name":        col,
+            "missing":     missing,
+            "missing_pct": round(missing / len(df) * 100, 1),
+            "unique":      int(series.nunique()),
+            "min":         round(float(numeric.min()), 3) if len(numeric) > 0 else None,
+            "max":         round(float(numeric.max()), 3) if len(numeric) > 0 else None,
+            "mean":        round(float(numeric.mean()), 3) if len(numeric) > 0 else None,
+            "std":         round(float(numeric.std()), 3) if len(numeric) > 0 else None,
+        })
+
     # Step 8: fill remaining gaps
     df = _fill_missing(df)
 
@@ -393,9 +432,11 @@ def preprocess(
 
     rows_clean = len(df)
 
-    # Step 9: build a summary for the API response
+    # Step 10: build a summary for the API response
     date_range_days = (df.index[-1] - df.index[0]).days + 1
     irr             = df["irradiance"]
+
+    # ── Pattern aggregates ────────────────────────────────────────────────────
     hourly_avg = (
         irr.groupby(df.index.hour)
         .mean()
@@ -420,28 +461,35 @@ def preprocess(
     daily_avg_df = irr.resample("D").mean().round(2).reset_index()
     date_col = "timestamp" if "timestamp" in daily_avg_df.columns else daily_avg_df.columns[0]
     daily_avg = [
-        {
-            "date": str(row[date_col])[:10],
-            "avg": float(row["irradiance"]),
-        }
+        {"date": str(row[date_col])[:10], "avg": float(row["irradiance"])}
         for _, row in daily_avg_df.iterrows()
     ]
 
+    rows_dropped = rows_raw - rows_after_drop
+
     meta: dict[str, Any] = {
-        "rows_raw":          rows_raw,
-        "rows_clean":        rows_clean,
-        "pct_clean":         round(rows_clean / rows_raw * 100, 1),
-        "columns_available": list(df.columns),
-        "irradiance_mean":   round(float(irr.mean()), 2),
-        "irradiance_max":    round(float(irr.max()),  2),
-        "irradiance_min":    round(float(irr.min()),  2),
-        "date_range_days":   date_range_days,
-        "date_start":        str(df.index[0]),
-        "date_end":          str(df.index[-1]),
-        "hourly_avg":         hourly_avg,
-        "weekday_avg":        weekday_avg,
-        "monthly_avg":        monthly_avg,
-        "daily_avg":          daily_avg,
+        "rows_raw":            rows_raw,
+        "rows_clean":          rows_clean,
+        "rows_dropped":        rows_dropped,
+        "pct_clean":           round(rows_after_drop / rows_raw * 100, 1),
+        "columns_available":   list(df.columns),
+        "irradiance_mean":     round(float(irr.mean()), 2),
+        "irradiance_max":      round(float(irr.max()),  2),
+        "irradiance_min":      round(float(irr.min()),  2),
+        "irradiance_std":      round(float(irr.std()),  2),
+        "date_range_days":     date_range_days,
+        "date_start":          str(df.index[0]),
+        "date_end":            str(df.index[-1]),
+        "duplicate_rows":      duplicate_rows,
+        "missing_hours":       missing_hours,
+        "total_missing_cells": total_missing_cells,
+        "clipped_count":       clipped_count,
+        "outlier_count":       outlier_count,
+        "column_quality":      column_quality,
+        "hourly_avg":          hourly_avg,
+        "weekday_avg":         weekday_avg,
+        "monthly_avg":         monthly_avg,
+        "daily_avg":           daily_avg,
     }
 
     logger.info(

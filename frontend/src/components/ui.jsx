@@ -125,7 +125,6 @@ export function ConfidenceBadge({ confidence }) {
 export function SourceBadge({ source }) {
   const map = {
     ai:                     { label: "AI",            cls: "bg-purple-100 text-purple-700" },
-    physics_rule:           { label: "Physics",       cls: "bg-cyan-100 text-cyan-700" },
     interpolation_fallback: { label: "Interpolation", cls: "bg-gray-100 text-gray-600" },
   };
   const { label, cls } = map[source] || { label: source, cls: "bg-gray-100 text-gray-600" };

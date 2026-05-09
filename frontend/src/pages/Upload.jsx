@@ -417,17 +417,25 @@ function Upload() {
               <>
                 <Card title="Dataset Overview"
                   subtitle="Summary statistics of the raw upload and cleaned data">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <StatCard label="Rows (raw)"
                       value={uploadStats.rows_raw.toLocaleString()}
-                      color="text-gray-700" sub="before cleaning" />
-                    <StatCard label="Rows (clean)"
+                      color="text-gray-700" sub="total rows in CSV" />
+                    <StatCard label="Rows kept"
                       value={uploadStats.rows_clean.toLocaleString()}
-                      color="text-blue-600" sub="after cleaning" />
-                    <StatCard label="Clean %"
-                      value={uploadStats.pct_clean.toFixed(1)}
-                      unit="%"
-                      color="text-green-600" sub="rows kept" />
+                      color="text-blue-600" sub="after removing bad rows" />
+                    <StatCard label="Rows dropped"
+                      value={(uploadStats.rows_dropped ?? 0).toLocaleString()}
+                      color={(uploadStats.rows_dropped ?? 0) > 0 ? "text-orange-500" : "text-green-600"}
+                      sub="bad timestamps / duplicates" />
+                    <StatCard label="Issues found"
+                      value={(
+                        (uploadStats.total_missing_cells ?? 0) +
+                        (uploadStats.clipped_count ?? 0) +
+                        (uploadStats.outlier_count ?? 0)
+                      ).toLocaleString()}
+                      color={(uploadStats.total_missing_cells ?? 0) + (uploadStats.clipped_count ?? 0) + (uploadStats.outlier_count ?? 0) > 0 ? "text-orange-500" : "text-green-600"}
+                      sub="missing + impossible + outliers" />
                   </div>
                 </Card>
 
@@ -552,31 +560,138 @@ function Upload() {
             {/* ── Data Quality ───────────────────────── */}
             {activeTab === "quality" && (
               <>
-                <Card title="Cleaning Summary"
-                  subtitle="What changed during preprocessing">
+                {/* Summary health cards */}
+                <Card title="Dataset Health" subtitle="Key quality indicators detected during preprocessing">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard label="Rows Dropped"
-                      value={(uploadStats.rows_raw - uploadStats.rows_clean).toLocaleString()}
-                      color="text-orange-600" sub="invalid timestamps / gaps" />
-                    <StatCard label="Clean %"
-                      value={uploadStats.pct_clean.toFixed(1)}
-                      unit="%"
-                      color="text-green-600" sub="rows kept" />
-                    <StatCard label="Detection Mode"
-                      value="direct"
-                      color="text-indigo-600" sub="GHI column" />
-                    <StatCard label="Warnings"
-                      value={result.warnings?.length || 0}
-                      color="text-gray-600" sub="non-fatal" />
+                    <StatCard label="Duplicate Rows"
+                      value={(uploadStats.duplicate_rows ?? 0).toLocaleString()}
+                      color={uploadStats.duplicate_rows > 0 ? "text-orange-500" : "text-green-600"}
+                      sub={uploadStats.duplicate_rows > 0 ? "removed" : "none found"} />
+                    <StatCard label="Missing Hours"
+                      value={(uploadStats.missing_hours ?? 0).toLocaleString()}
+                      color={uploadStats.missing_hours > 0 ? "text-orange-500" : "text-green-600"}
+                      sub={uploadStats.missing_hours > 0 ? "gaps in timeline" : "complete timeline"} />
+                    <StatCard label="Missing Cells"
+                      value={(uploadStats.total_missing_cells ?? 0).toLocaleString()}
+                      color={uploadStats.total_missing_cells > 0 ? "text-orange-500" : "text-green-600"}
+                      sub="across all columns" />
+                    <StatCard label="Statistical Outliers"
+                      value={(uploadStats.outlier_count ?? 0).toLocaleString()}
+                      color={uploadStats.outlier_count > 50 ? "text-red-500" : uploadStats.outlier_count > 0 ? "text-orange-500" : "text-green-600"}
+                      sub="unusual GHI values detected" />
+                  </div>
+                </Card>
+
+                {/* Cleaning summary */}
+                <Card title="Preprocessing Summary" subtitle="What the pipeline did to your data">
+                  <div className="space-y-3">
+                    {[
+                      {
+                        label: "Rows dropped",
+                        value: (uploadStats.rows_dropped ?? 0).toLocaleString(),
+                        desc: "Rows removed due to unparseable or missing timestamps",
+                        ok: (uploadStats.rows_dropped ?? 0) === 0,
+                      },
+                      {
+                        label: "Missing values filled",
+                        value: (uploadStats.total_missing_cells ?? 0).toLocaleString(),
+                        desc: "Gaps up to 6 hours filled by interpolation; larger gaps filled by carrying the last known value forward",
+                        ok: (uploadStats.total_missing_cells ?? 0) === 0,
+                      },
+                      {
+                        label: "Physically impossible values removed",
+                        value: (uploadStats.clipped_count ?? 0).toLocaleString(),
+                        desc: "Values outside the valid solar range (0–1300 W/m²) were set to missing and then filled",
+                        ok: (uploadStats.clipped_count ?? 0) === 0,
+                      },
+                      {
+                        label: "Duplicate timestamps removed",
+                        value: (uploadStats.duplicate_rows ?? 0).toLocaleString(),
+                        desc: "Rows with the same timestamp as another row were removed, keeping the latest entry",
+                        ok: (uploadStats.duplicate_rows ?? 0) === 0,
+                      },
+                    ].map(({ label, value, desc, ok }) => (
+                      <div key={label} className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <span className={`mt-0.5 text-lg ${ok ? "text-green-500" : "text-orange-400"}`}>
+                          {ok ? "✓" : "⚠"}
+                        </span>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-700">{label}</span>
+                            <span className={`text-sm font-bold ${ok ? "text-green-600" : "text-orange-600"}`}>{value}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Per-column breakdown */}
+                {uploadStats.column_quality?.length > 0 && (
+                  <Card title="Column-by-Column Quality" subtitle="Missing values, range, and statistics per column">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+                            <th className="px-3 py-2 border border-gray-100">Column</th>
+                            <th className="px-3 py-2 border border-gray-100">Missing</th>
+                            <th className="px-3 py-2 border border-gray-100">Missing %</th>
+                            <th className="px-3 py-2 border border-gray-100">Unique</th>
+                            <th className="px-3 py-2 border border-gray-100">Min</th>
+                            <th className="px-3 py-2 border border-gray-100">Max</th>
+                            <th className="px-3 py-2 border border-gray-100">Mean</th>
+                            <th className="px-3 py-2 border border-gray-100">Std Dev</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {uploadStats.column_quality.map((col) => (
+                            <tr key={col.name} className="hover:bg-gray-50 transition">
+                              <td className="px-3 py-2 border border-gray-100 font-medium text-gray-800">{col.name}</td>
+                              <td className={`px-3 py-2 border border-gray-100 font-semibold ${col.missing > 0 ? "text-orange-500" : "text-green-600"}`}>
+                                {col.missing.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2 border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${col.missing_pct > 20 ? "bg-red-400" : col.missing_pct > 0 ? "bg-orange-400" : "bg-green-400"}`}
+                                      style={{ width: `${Math.min(col.missing_pct, 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-gray-500">{col.missing_pct}%</span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 border border-gray-100 text-gray-600">{col.unique.toLocaleString()}</td>
+                              <td className="px-3 py-2 border border-gray-100 text-gray-600">{col.min ?? "—"}</td>
+                              <td className="px-3 py-2 border border-gray-100 text-gray-600">{col.max ?? "—"}</td>
+                              <td className="px-3 py-2 border border-gray-100 text-gray-600">{col.mean ?? "—"}</td>
+                              <td className="px-3 py-2 border border-gray-100 text-gray-600">{col.std ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Irradiance distribution */}
+                <Card title="Irradiance Distribution" subtitle="Statistics of the GHI column from the original data before gap filling">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatCard label="Min" value={uploadStats.irradiance_min?.toFixed(1)} unit="W/m²" color="text-gray-500" />
+                    <StatCard label="Mean" value={uploadStats.irradiance_mean?.toFixed(1)} unit="W/m²" color="text-blue-600" />
+                    <StatCard label="Max" value={uploadStats.irradiance_max?.toFixed(1)} unit="W/m²" color="text-orange-600" />
+                    <StatCard label="Std Dev" value={uploadStats.irradiance_std?.toFixed(1)} unit="W/m²" color="text-purple-600" />
                   </div>
                 </Card>
 
                 {result.warnings?.length > 0 && (
-                  <Card title="Warnings"
-                    subtitle="Issues found during column detection">
-                    <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
+                  <Card title="Warnings" subtitle="Non-fatal issues detected during upload">
+                    <ul className="space-y-2">
                       {result.warnings.map((warn, idx) => (
-                        <li key={idx}>{warn}</li>
+                        <li key={idx} className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          <span className="mt-0.5">⚠</span> {warn}
+                        </li>
                       ))}
                     </ul>
                   </Card>

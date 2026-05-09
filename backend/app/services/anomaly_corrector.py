@@ -23,8 +23,7 @@ logger = logging.getLogger(__name__)
 client = anthropic.AsyncAnthropic()
 
 GHI_MIN        = 0.0
-GHI_MAX        = 1200.0
-NIGHT_HOURS    = set(range(0, 5)) | set(range(21, 24))
+GHI_MAX        = 1300.0
 
 BATCH_SIZE     = 20   # anomalies per Sonnet call
 MAX_CONCURRENT = 8    # concurrent batches
@@ -36,12 +35,6 @@ _MAX_TOKENS    = 2200  # 20 items × ~100 output tokens + buffer
 
 # ── Physical helpers ──────────────────────────────────────────────────────────
 
-def _is_nighttime(ts) -> bool:
-    try:
-        return pd.Timestamp(ts).hour in NIGHT_HOURS
-    except Exception:
-        return False
-
 
 def _is_physically_plausible(value: float, ts, df: pd.DataFrame, idx: int) -> bool:
     """Return True if the value is reasonable and should NOT be corrected."""
@@ -49,7 +42,7 @@ def _is_physically_plausible(value: float, ts, df: pd.DataFrame, idx: int) -> bo
 
     if value < GHI_MIN or value > GHI_MAX:
         return False
-    if hour in NIGHT_HOURS and value > 10:
+    if (hour < 5 or hour >= 21) and value > 10:
         return False
 
     if "irradiance" not in df.columns:
@@ -110,7 +103,7 @@ def _build_batch_prompt(batch: List[Dict]) -> str:
 
     return (
         f"Fix {len(batch)} solar irradiance anomalies. "
-        f"Valid range: 0–1200 W/m². Night hours (0–4, 21–23) must be 0.\n"
+        f"Valid range: 0–1300 W/m². Night hours (0–4, 21–23) must be 0.\n"
         f"Use prev_hour and next_hour as context for what a plausible value is.\n\n"
         f"Data: {items}\n\n"
         f"Reply with a JSON array of exactly {len(batch)} objects in the same order:\n"
@@ -229,19 +222,7 @@ async def _correct_all_async(
             logger.warning("Timestamp %s not in DataFrame — skipping", ts)
             continue
 
-        # 1. Nighttime physics rule
-        if _is_nighttime(ts):
-            corrected_df.iloc[i, col_loc] = 0.0
-            correction_log.append({
-                "timestamp": str(ts), "original_value": bad_value,
-                "corrected_value": 0.0,
-                "reasoning": "Nighttime — irradiance is physically zero.",
-                "confidence": "high", "method_flagged_by": method,
-                "severity": severity, "correction_source": "physics_rule",
-            })
-            continue
-
-        # 2. Plausibility check — dismiss false positives
+        # 1. Plausibility check — dismiss false positives
         if _is_physically_plausible(bad_value, ts, df, i):
             dismissed += 1
             continue

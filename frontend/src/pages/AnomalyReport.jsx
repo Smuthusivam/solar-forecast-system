@@ -149,9 +149,8 @@ export default function AnomalyReport({ datasetId }) {
   }));
 
   const sourceBreakdown = [
-    { source: "AI",           count: stats?.ai_corrections           || 0, fill: "#8b5cf6" },
-    { source: "Physics Rule", count: stats?.physics_rule_corrections || 0, fill: "#06b6d4" },
-    { source: "Interpolation",count: stats?.interpolation_fallbacks  || 0, fill: "#94a3b8" },
+    { source: "AI",           count: stats?.ai_corrections          || 0, fill: "#8b5cf6" },
+    { source: "Interpolation",count: stats?.interpolation_fallbacks || 0, fill: "#94a3b8" },
   ];
 
   // -- Tab config --------------------------------------------------------------
@@ -255,7 +254,6 @@ export default function AnomalyReport({ datasetId }) {
           {[
             { label: "Anomalies Found", value: correctionResult.anomaly_count,        color: "text-orange-600" },
             { label: "AI Corrected",    value: stats?.ai_corrections,                 color: "text-purple-600" },
-            { label: "Physics Rule",    value: stats?.physics_rule_corrections,        color: "text-cyan-600"   },
             { label: "Interpolated",    value: stats?.interpolation_fallbacks,         color: "text-slate-500"  },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
@@ -476,10 +474,6 @@ export default function AnomalyReport({ datasetId }) {
                   <span>AI Corrected (<strong>{stats?.ai_corrections ?? 0}</strong>)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-cyan-500 rounded" />
-                  <span>Physics Rule (<strong>{stats?.physics_rule_corrections ?? 0}</strong>)</span>
-                </div>
-                <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-gray-500 rounded" />
                   <span>Interpolation (<strong>{stats?.interpolation_fallbacks ?? 0}</strong>)</span>
                 </div>
@@ -497,14 +491,14 @@ export default function AnomalyReport({ datasetId }) {
                   <tbody className="divide-y divide-gray-100">
                     {correction_log?.map((c, i) => {
                       const delta = c.corrected_value - c.original_value;
-                      const sourceColor  = c.correction_source === "ai" ? "bg-purple-50" : c.correction_source === "physics_rule" ? "bg-cyan-50" : "bg-gray-50";
-                      const sourceBorder = c.correction_source === "ai" ? "border-l-4 border-l-purple-500" : c.correction_source === "physics_rule" ? "border-l-4 border-l-cyan-500" : "border-l-4 border-l-gray-400";
+                      const sourceColor  = c.correction_source === "ai" ? "bg-purple-50" : "bg-gray-50";
+                      const sourceBorder = c.correction_source === "ai" ? "border-l-4 border-l-purple-500" : "border-l-4 border-l-gray-400";
                       return (
                         <tr key={i} className={`hover:bg-yellow-50 align-top ${sourceColor} ${sourceBorder}`}>
                           <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
                           <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{new Date(c.timestamp).toLocaleString()}</td>
                           <td className="px-4 py-2 font-semibold text-orange-600">{c.original_value.toFixed(2)}</td>
-                          <td className={`px-4 py-2 font-bold ${c.correction_source === "ai" ? "text-purple-700" : c.correction_source === "physics_rule" ? "text-cyan-700" : "text-gray-700"}`}>
+                          <td className={`px-4 py-2 font-bold ${c.correction_source === "ai" ? "text-purple-700" : "text-gray-700"}`}>
                             {c.corrected_value.toFixed(2)}
                           </td>
                           <td className={`px-4 py-2 font-semibold text-xs ${delta < 0 ? "text-green-600" : "text-red-500"}`}>

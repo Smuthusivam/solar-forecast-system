@@ -52,23 +52,44 @@ class DetectedColumns(BaseModel):
     timestamp:      Optional[str] = Field(None, description="Datetime column name")
 
 
+class ColumnQuality(BaseModel):
+    name:          str
+    missing:       int
+    missing_pct:   float
+    unique:        int
+    min:           Optional[float] = None
+    max:           Optional[float] = None
+    mean:          Optional[float] = None
+    std:           Optional[float] = None
+
+
 class DataStats(BaseModel):
     # Summary stats computed during preprocessing.
     rows_raw:          int
     rows_clean:        int
+    rows_dropped:      int = 0
     pct_clean:         float
     columns_available: list[str]
     irradiance_mean:   float
     irradiance_max:    float
     irradiance_min:    float
+    irradiance_std:    float = 0.0
     date_range_days:   int
     date_start:        str
     date_end:          str
     detection_mode:    Optional[str] = None
-    hourly_avg:        list[float] = Field(default_factory=list, description="Avg irradiance by hour (0-23)")
-    weekday_avg:       list[float] = Field(default_factory=list, description="Avg irradiance by weekday (Sun-Sat)")
-    monthly_avg:       list[float] = Field(default_factory=list, description="Avg irradiance by month (Jan-Dec)")
-    daily_avg:         list[dict]  = Field(default_factory=list, description="Daily avg irradiance: [{date, avg}]")
+    # Detailed quality metrics
+    duplicate_rows:      int = 0
+    missing_hours:       int = 0
+    total_missing_cells: int = 0
+    clipped_count:       int = 0
+    outlier_count:       int = 0
+    column_quality:    list[ColumnQuality] = Field(default_factory=list)
+    # Pattern aggregates
+    hourly_avg:        list[float] = Field(default_factory=list)
+    weekday_avg:       list[float] = Field(default_factory=list)
+    monthly_avg:       list[float] = Field(default_factory=list)
+    daily_avg:         list[dict]  = Field(default_factory=list)
 
 
 class UploadResponse(BaseModel):

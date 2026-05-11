@@ -22,7 +22,7 @@ from ml_core.anomaly import detect_anomalies
 from app.services.anomaly_corrector import _correct_all_async, compute_correction_stats
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/correction", tags=["correction"])
+router = APIRouter(prefix="/correction", tags=["Correction"])
 
 _CORRECTION_DIR = os.path.join(os.path.dirname(_SESSIONS_DIR), "corrections")
 os.makedirs(_CORRECTION_DIR, exist_ok=True)
@@ -106,7 +106,7 @@ async def run_correction(dataset_id: str):
     }
 
 
-@router.post("/forecast/{correction_session_id}")
+@router.post("/forecast/{correction_session_id}", summary="Run Forecast on AI-Corrected Data")
 async def run_forecast_from_corrected(
     correction_session_id: str,
     horizon: int = 24,

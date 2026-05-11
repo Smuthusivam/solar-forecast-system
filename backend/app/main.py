@@ -118,7 +118,7 @@ app.include_router(upload.router,   prefix="/api", tags=["Upload"])
 app.include_router(forecast.router, prefix="/api", tags=["Forecast"])
 app.include_router(anomaly.router,  prefix="/api", tags=["Anomaly"])
 app.include_router(history.router,  prefix="/api", tags=["History"])
-app.include_router(correction.router, prefix="/api", tags=["Correction"])   
+app.include_router(correction.router, prefix="/api")   
 app.include_router(export.router,   prefix="/api", tags=["Export"])
 
 

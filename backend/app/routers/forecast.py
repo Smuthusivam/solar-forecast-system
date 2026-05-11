@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/forecast/run", response_model=ForecastResponse)
+@router.post("/forecast/run", response_model=ForecastResponse, summary="Run Forecast on Original Data")
 def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
     # Load session, run the full ML pipeline, save metadata to DB, return results.
     session        = get_session(request.session_id)

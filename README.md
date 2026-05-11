@@ -99,7 +99,7 @@ This system accepts solar irradiance datasets in CSV format and runs a complete 
 | Layer | Technology |
 |---|---|
 | Frontend | React 19, React Router 7, Recharts, Tailwind CSS 4, Vite |
-| Backend | FastAPI, Uvicorn, SQLAlchemy 2, Pydantic v2 |
+| Backend | FastAPI, Uvicorn, psycopg 3, Pydantic v2 |
 | Database | PostgreSQL 16 |
 | ML Models | XGBoost 2.0, LightGBM 4.3, scikit-learn |
 | AI | Anthropic Claude (column detection + anomaly correction) |
@@ -160,8 +160,10 @@ Copy `.env.example` to `.env` and fill in the values below.
 | `POSTGRES_DB` | No | `solar_forecast` | PostgreSQL database name |
 | `APP_ENV` | No | `production` | `production` or `development` |
 | `ALLOWED_ORIGINS` | No | `http://localhost` | Comma-separated CORS origins |
-| `DB_POOL_SIZE` | No | `5` | SQLAlchemy connection pool size |
-| `DB_MAX_OVERFLOW` | No | `10` | Max extra connections above pool size |
+| `DATABASE_URL` | Yes | — | Full PostgreSQL connection string, e.g. `postgresql://user:pass@host:5432/db` |
+| `TEST_DATABASE_URL` | No | — | Separate PostgreSQL DB for running tests — never the same as `DATABASE_URL` |
+| `DB_POOL_MIN` | No | `1` | Minimum connections in the psycopg pool |
+| `DB_POOL_MAX` | No | `10` | Maximum connections in the psycopg pool |
 | `VITE_API_BASE_URL` | No | `` (empty) | Leave empty for nginx proxy; set to backend URL for direct access |
 
 ---
@@ -220,9 +222,15 @@ solar-forecast-system/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI app, CORS, middleware
-│   │   ├── database.py          # SQLAlchemy models and helpers
+│   │   ├── database.py          # psycopg3 connection pool, DDL init, get_db
 │   │   ├── models/
+│   │   │   ├── dataset.py       # Dataset dataclass
+│   │   │   ├── forecast_run.py  # ForecastRun dataclass
+│   │   │   ├── forecast_point.py# ForecastPoint dataclass
 │   │   │   └── schemas.py       # Pydantic request/response schemas
+│   │   ├── crud/
+│   │   │   ├── dataset.py       # save_dataset
+│   │   │   └── forecast.py      # save/get forecast runs and points
 │   │   ├── routers/
 │   │   │   ├── upload.py        # CSV upload and session management
 │   │   │   ├── forecast.py      # Model training and forecasting
@@ -235,8 +243,7 @@ solar-forecast-system/
 │   │       └── anomaly_corrector.py  # Claude anomaly correction
 │   ├── storage/
 │   │   ├── sessions/            # Disk-backed session pickles (TTL 2h)
-│   │   ├── exports/             # Exported CSV files
-│   │   └── db/                  # SQLite fallback (if no DATABASE_URL)
+│   │   └── exports/             # Exported CSV files
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
@@ -282,7 +289,7 @@ User sessions (uploaded datasets) are stored as pickle files on a shared Docker 
 
 ### Database
 
-PostgreSQL is used in production. If `DATABASE_URL` is not set, the system falls back to a local SQLite database — suitable for development only.
+PostgreSQL is required. The backend uses psycopg 3 with a connection pool and creates all tables automatically on startup via `init_db()` — no migration tool needed for additive schema changes. Set `DATABASE_URL` in `.env` before starting the stack.
 
 ---
 

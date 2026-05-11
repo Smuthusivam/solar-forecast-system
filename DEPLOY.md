@@ -42,7 +42,7 @@ Three containers, one private network, one command to start everything.
 ```bash
 # 1. Configure secrets
 cp .env.example .env
-# Edit .env — set ANTHROPIC_API_KEY and POSTGRES_PASSWORD
+# Edit .env — set ANTHROPIC_API_KEY, POSTGRES_PASSWORD, and DATABASE_URL
 
 # 2. Build and start everything
 docker compose up -d --build
@@ -110,13 +110,14 @@ docker compose up -d --build
 ```
 
 The `--build` flag rebuilds only services whose source changed (Docker layer cache handles the rest).
-The `init_db()` call on backend startup creates any new tables automatically — no manual migration needed for additive schema changes.
+The `init_db()` call on backend startup runs `CREATE TABLE IF NOT EXISTS` for all tables — no migration tool needed for additive schema changes. The backend uses psycopg 3 directly (no SQLAlchemy).
 
 ## Production checklist
 
 Before exposing to the internet:
 
 - [ ] Replace `POSTGRES_PASSWORD` with a strong random value
+- [ ] Set `DATABASE_URL` to match the updated password: `postgresql://solar:<newpass>@postgres:5432/solar_forecast`
 - [ ] Set `ALLOWED_ORIGINS` to your real domain (no `localhost`)
 - [ ] Put a TLS-terminating reverse proxy (Caddy / Traefik / Cloudflare) in front of port 80
 - [ ] Pin image versions in `docker-compose.yml` (already done for postgres + nginx)

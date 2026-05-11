@@ -1,259 +1,129 @@
-# Database layer — supports SQLite locally and PostgreSQL in production via DATABASE_URL.
-
 from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    Integer,
-    String,
-    Text,
-    create_engine,
-    event,
-    text,
-)
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import NullPool, QueuePool
+import psycopg
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 logger = logging.getLogger(__name__)
 
-
-def _resolve_database_url() -> tuple[str, bool]:
-    # Use DATABASE_URL if set (Railway/Render), otherwise fall back to local SQLite.
-    url = os.getenv("DATABASE_URL", "").strip()
-
-    if url:
-        # Railway uses the legacy "postgres://" scheme — SQLAlchemy needs "postgresql://"
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
-            logger.info("DATABASE_URL scheme corrected: postgres:// → postgresql://")
-
-        logger.info("Using cloud database: %s", url.split("@")[-1])
-        return url, False
-
-    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    db_path     = os.path.join(backend_dir, "storage", "db", "solar_forecast.db")
-
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-
-    sqlite_url = f"sqlite:///{db_path}"
-    logger.info("DATABASE_URL not set — using SQLite at: %s", db_path)
-    return sqlite_url, True
-
-
-DATABASE_URL, _IS_SQLITE = _resolve_database_url()
-
-
-def _build_engine() -> Engine:
-    # Build engine with dialect-appropriate settings (SQLite vs PostgreSQL).
-    echo = os.getenv("DB_ECHO", "false").lower() == "true"
-
-    if _IS_SQLITE:
-        engine = create_engine(
-            DATABASE_URL,
-            connect_args={"check_same_thread": False},
-            poolclass=NullPool,
-            echo=echo,
-        )
-
-        @event.listens_for(engine, "connect")
-        def _set_sqlite_pragmas(dbapi_conn, _connection_record):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL;")     # readers don't block writers
-            cursor.execute("PRAGMA foreign_keys=ON;")      # SQLite disables FKs by default
-            cursor.execute("PRAGMA synchronous=NORMAL;")   # safe tradeoff for non-critical data
-            cursor.close()
-
-        logger.info("SQLite engine created (WAL mode, FK enforcement ON)")
-        return engine
-
-    pool_size    = int(os.getenv("DB_POOL_SIZE",    "5"))
-    max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
-
-    engine = create_engine(
-        DATABASE_URL,
-        poolclass=QueuePool,
-        pool_size=pool_size,
-        max_overflow=max_overflow,
-        pool_pre_ping=True,    # test connections before handing them out
-        pool_recycle=1800,     # recycle every 30 min to beat cloud idle timeouts
-        echo=echo,
+_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not _DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. "
+        "Set it to a PostgreSQL connection string, e.g. "
+        "postgresql://user:password@localhost:5432/solar_forecast"
     )
-    logger.info(
-        "PostgreSQL engine created (pool_size=%d, max_overflow=%d)",
-        pool_size, max_overflow,
-    )
-    return engine
+
+# Railway uses the legacy "postgres://" scheme — psycopg needs "postgresql://"
+if _DATABASE_URL.startswith("postgres://"):
+    _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    logger.info("DATABASE_URL scheme corrected: postgres:// → postgresql://")
+
+_pool: ConnectionPool | None = None
 
 
-engine = _build_engine()
-
-SessionLocal = sessionmaker(
-    bind=engine,
-    autocommit=False,
-    autoflush=False,
-    expire_on_commit=False,
-)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class ForecastRun(Base):
-    # One row per completed forecast run — stores metadata only, not the full arrays.
-    __tablename__ = "forecast_runs"
-
-    run_id         = Column(Integer,     primary_key=True, autoincrement=True)
-    dataset_id     = Column(Integer,     nullable=True, index=True)
-    session_id     = Column(String(64),  nullable=False, index=True)
-    filename       = Column(String(255), nullable=False)
-    horizon        = Column(Integer,     nullable=False)
-    detection_mode = Column(String(16),  nullable=False)
-    best_model     = Column(String(16),  nullable=True)
-
-    rmse           = Column(Float,   nullable=False)
-    mae            = Column(Float,   nullable=False)
-    r2             = Column(Float,   nullable=False)
-
-    rows_processed = Column(Integer, nullable=False)
-    anomaly_count  = Column(Integer, nullable=False, default=0)
-
-    created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-    def __repr__(self) -> str:
-        return (
-            f"<ForecastRun id={self.run_id} "
-            f"file={self.filename!r} horizon={self.horizon}h "
-            f"rmse={self.rmse:.3f}>"
+def _get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        min_size = int(os.getenv("DB_POOL_MIN", "1"))
+        max_size = int(os.getenv("DB_POOL_MAX", "10"))
+        _pool = ConnectionPool(
+            conninfo=_DATABASE_URL,
+            min_size=min_size,
+            max_size=max_size,
+            kwargs={"row_factory": dict_row},
+            open=True,
         )
+        logger.info("PostgreSQL connection pool created (min=%d, max=%d)", min_size, max_size)
+    return _pool
 
 
-class Dataset(Base):
-    # Metadata about each uploaded CSV.
-    __tablename__ = "datasets"
-
-    dataset_id     = Column(Integer,     primary_key=True, autoincrement=True)
-    session_id     = Column(String(64),  nullable=False, index=True)
-    filename       = Column(String(255), nullable=False)
-    file_path      = Column(String(512), nullable=False)
-    file_size      = Column(Integer,     nullable=False)
-    file_hash      = Column(String(64),  nullable=False)
-    row_count      = Column(Integer,     nullable=False)
-    column_map     = Column(Text,        nullable=False)
-    detection_mode = Column(String(16),  nullable=False)
-    created_at     = Column(DateTime,    nullable=False, default=datetime.utcnow)
-
-
-class ForecastPoint(Base):
-    # Time-series output for each forecast run.
-    __tablename__ = "forecast_points"
-
-    point_id  = Column(Integer,  primary_key=True, autoincrement=True)
-    run_id    = Column(Integer,  nullable=False, index=True)
-    timestamp = Column(DateTime, nullable=False, index=True)
-    predicted = Column(Float,    nullable=False)
-    actual    = Column(Float,    nullable=True)
-    lower     = Column(Float,    nullable=True)
-    upper     = Column(Float,    nullable=True)
-    is_future = Column(Boolean,  nullable=False, default=False)
-
-
-def get_db() -> Generator[Session, None, None]:
-    # Yield one session per request and close it afterward — no connection leaks.
-    db = SessionLocal()
-    try:
-        yield db
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+@contextmanager
+def get_db() -> Generator[psycopg.Connection, None, None]:
+    pool = _get_pool()
+    with pool.connection() as conn:
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def init_db() -> None:
-    # Create all tables that don't exist yet — safe to call on every startup.
-    Base.metadata.create_all(bind=engine)
+    with get_db() as conn:
+        conn.execute("SELECT pg_advisory_lock(1234567890)")  # one worker runs DDL at a time
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS datasets (
+                dataset_id     SERIAL PRIMARY KEY,
+                session_id     VARCHAR(64)  NOT NULL,
+                filename       VARCHAR(255) NOT NULL,
+                file_path      VARCHAR(512) NOT NULL,
+                file_size      INTEGER      NOT NULL,
+                file_hash      VARCHAR(64)  NOT NULL,
+                row_count      INTEGER      NOT NULL,
+                column_map     TEXT         NOT NULL,
+                detection_mode VARCHAR(16)  NOT NULL,
+                created_at     TIMESTAMP    NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_datasets_session_id ON datasets (session_id)")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS forecast_runs (
+                run_id         SERIAL PRIMARY KEY,
+                dataset_id     INTEGER,
+                session_id     VARCHAR(64)  NOT NULL,
+                filename       VARCHAR(255) NOT NULL,
+                horizon        INTEGER      NOT NULL,
+                detection_mode VARCHAR(16)  NOT NULL,
+                best_model     VARCHAR(16),
+                rmse           DOUBLE PRECISION NOT NULL,
+                mae            DOUBLE PRECISION NOT NULL,
+                r2             DOUBLE PRECISION NOT NULL,
+                rows_processed INTEGER      NOT NULL,
+                anomaly_count  INTEGER      NOT NULL DEFAULT 0,
+                created_at     TIMESTAMP    NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_forecast_runs_session_id ON forecast_runs (session_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_forecast_runs_dataset_id ON forecast_runs (dataset_id)")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS forecast_points (
+                point_id  SERIAL PRIMARY KEY,
+                run_id    INTEGER          NOT NULL,
+                timestamp TIMESTAMP        NOT NULL,
+                predicted DOUBLE PRECISION NOT NULL,
+                actual    DOUBLE PRECISION,
+                lower     DOUBLE PRECISION,
+                upper     DOUBLE PRECISION,
+                is_future BOOLEAN          NOT NULL DEFAULT FALSE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_forecast_points_run_id   ON forecast_points (run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_forecast_points_timestamp ON forecast_points (timestamp)")
+
+        conn.commit()
+        conn.execute("SELECT pg_advisory_unlock(1234567890)")
     logger.info("Database tables verified / created")
 
 
+def get_db_dep() -> Generator[psycopg.Connection, None, None]:
+    """FastAPI dependency — yields one connection per request."""
+    with get_db() as conn:
+        yield conn
+
+
 def db_is_online() -> bool:
-    # Ping the actual table, not just the engine, to catch missing init_db() calls.
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1 FROM forecast_runs LIMIT 1"))
+        with get_db() as conn:
+            conn.execute("SELECT 1 FROM forecast_runs LIMIT 1")
         return True
     except Exception as exc:
         logger.warning("DB health check failed: %s", exc)
         return False
-
-
-def save_forecast_run(db: Session, **kwargs) -> ForecastRun:
-    # Insert a new ForecastRun and return it with the auto-assigned run_id.
-    run = ForecastRun(**kwargs)
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-    return run
-
-
-def save_dataset(db: Session, **kwargs) -> Dataset:
-    dataset = Dataset(**kwargs)
-    db.add(dataset)
-    db.commit()
-    db.refresh(dataset)
-    return dataset
-
-
-def save_forecast_points(db: Session, run_id: int, points: list[dict], is_future: bool = False) -> None:
-    records = []
-    for p in points:
-        ts = p["timestamp"]
-        if isinstance(ts, str):
-            ts = datetime.fromisoformat(ts)
-        records.append(
-            ForecastPoint(
-                run_id=run_id,
-                timestamp=ts,
-                predicted=p["predicted"],
-                actual=p.get("actual"),
-                lower=p.get("lower"),
-                upper=p.get("upper"),
-                is_future=is_future,
-            )
-        )
-    db.add_all(records)
-    db.commit()
-
-
-def get_all_runs(db: Session, limit: int = 100) -> list[ForecastRun]:
-    """Return all forecast runs, newest first, capped at `limit`."""
-    return (
-        db.query(ForecastRun)
-        .order_by(ForecastRun.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-
-
-def get_run_by_id(db: Session, run_id: int) -> ForecastRun | None:
-    """Return a single run by primary key, or None if not found."""
-    return db.query(ForecastRun).filter(ForecastRun.run_id == run_id).first()
-
-
-def get_forecast_points_by_run_id(db: Session, run_id: int) -> list[ForecastPoint]:
-    """Return all forecast points for a run, ordered by timestamp."""
-    return (
-        db.query(ForecastPoint)
-        .filter(ForecastPoint.run_id == run_id)
-        .order_by(ForecastPoint.timestamp)
-        .all()
-    )

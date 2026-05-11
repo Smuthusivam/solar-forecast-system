@@ -42,8 +42,8 @@ services:
     environment:
       APP_ENV:            ${APP_ENV:-production}
       DATABASE_URL:       postgresql://${POSTGRES_USER:-solar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-solar_forecast}
-      DB_POOL_SIZE:       ${DB_POOL_SIZE:-5}
-      DB_MAX_OVERFLOW:    ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_MIN:        ${DB_POOL_MIN:-1}
+      DB_POOL_MAX:        ${DB_POOL_MAX:-10}
       DB_ECHO:            ${DB_ECHO:-false}
       ANTHROPIC_API_KEY:  ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env}
       ALLOWED_ORIGINS:    ${ALLOWED_ORIGINS:-https://178.128.203.208.nip.io,http://localhost,http://localhost:80}

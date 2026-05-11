@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
-from app.database import get_db, get_all_runs, get_run_by_id, get_forecast_points_by_run_id
+from app.database import get_db_dep
+from app.crud import get_all_runs, get_run_by_id, get_forecast_points_by_run_id
 from app.models.schemas import ForecastRunSummary, HistoryResponse
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/history", response_model=HistoryResponse)
-def get_history(limit: int = 100, db: Session = Depends(get_db)):
+def get_history(limit: int = 100, db=Depends(get_db_dep)):
     """Return all past forecast runs, newest first."""
     runs = get_all_runs(db, limit=limit)
 
@@ -26,7 +26,7 @@ def get_history(limit: int = 100, db: Session = Depends(get_db)):
 
 
 @router.get("/history/{run_id}", response_model=ForecastRunSummary)
-def get_run(run_id: int, db: Session = Depends(get_db)):
+def get_run(run_id: int, db=Depends(get_db_dep)):
     """Return a single forecast run by ID."""
     run = get_run_by_id(db, run_id)
 
@@ -44,7 +44,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/history/{run_id}/points")
-def get_run_points(run_id: int, db: Session = Depends(get_db)):
+def get_run_points(run_id: int, db=Depends(get_db_dep)):
     """Return all stored forecast points for a run (predicted vs actual + confidence bands)."""
     run = get_run_by_id(db, run_id)
     if not run:

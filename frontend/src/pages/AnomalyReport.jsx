@@ -11,7 +11,6 @@ import {
   getAnomalies,
   runCorrection,
   runForecastFromCorrected,
-  getCorrectedCSVUrl,
   downloadComparisonCSV,
   readAnomalyReportCache,
   writeAnomalyReportCache,
@@ -175,15 +174,6 @@ export default function AnomalyReport({ datasetId }) {
           >
             Model Comparison
           </button>,
-          correctionResult && (
-            <a
-              key="download-csv"
-              href={getCorrectedCSVUrl(correctionResult.session_id)}
-              className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
-            >
-              Corrected CSV
-            </a>
-          ),
           correctionResult && (
             <button
               key="download-compare"

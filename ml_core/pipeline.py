@@ -80,8 +80,11 @@ def _build_future_forecast(
     Iteratively forecast `horizon` future hours beyond the last row in df
     using the single best model (lowest test RMSE).
     """
-    working = df.copy()
-    last_ts = working.index[-1]
+    # Keep only the tail needed for max lag (168h) + rolling windows (24h).
+    # This avoids rebuilding features on the full growing dataset each step.
+    _LOOKBACK = 200
+    working = df.iloc[-_LOOKBACK:].copy()
+    last_ts = df.index[-1]
     future_points = []
     feat_cols = None
 

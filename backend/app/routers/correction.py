@@ -2,12 +2,10 @@
 correction.py — FastAPI router
 Endpoints:
   POST /api/correction/run/{dataset_id}   → detect + AI-correct + compare models
-  GET  /api/correction/export/{session_id} → download corrected CSV
   GET  /api/correction/log/{session_id}   → get correction log JSON
 """
 
 import asyncio
-import io
 import os
 import pickle
 import uuid
@@ -15,7 +13,6 @@ import logging
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 
 from app.routers.upload import get_session, _SESSIONS_DIR
 from ml_core.anomaly import detect_anomalies
@@ -185,21 +182,3 @@ async def get_correction_log(session_id: str):
     }
 
 
-@router.get("/export/{session_id}")
-async def export_corrected_csv(session_id: str):
-    """Download the AI-corrected dataset as a CSV file."""
-    session = _read_correction(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found or expired.")
-
-    df: pd.DataFrame = session["df_corrected"]
-    stream = io.StringIO()
-    df.to_csv(stream, index=False)
-    stream.seek(0)
-
-    filename = f"corrected_{session['dataset_id']}.csv"
-    return StreamingResponse(
-        iter([stream.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )

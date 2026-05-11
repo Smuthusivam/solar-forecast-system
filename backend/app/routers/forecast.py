@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
-from app.database import get_db, save_forecast_run, save_forecast_points
+from app.database import get_db_dep
+from app.crud import save_forecast_run, save_forecast_points
 from ml_core.anomaly import detect_anomalies
 from app.models.schemas import (
     ForecastRequest,
@@ -25,7 +25,7 @@ router = APIRouter()
 
 
 @router.post("/forecast/run", response_model=ForecastResponse, summary="Run Forecast on Original Data")
-def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
+def run_forecast(request: ForecastRequest, db=Depends(get_db_dep)):
     # Load session, run the full ML pipeline, save metadata to DB, return results.
     session        = get_session(request.session_id)
     df             = session["df"]
@@ -114,6 +114,7 @@ def run_forecast(request: ForecastRequest, db: Session = Depends(get_db)):
         forecast           = forecast_points,
         future_forecast    = future_points,
         metrics            = ModelMetrics(**m),
+        rows_processed     = result["rows_processed"],
         models_info        = models_info,
         feature_importance = result.get("feature_importance"),
     )

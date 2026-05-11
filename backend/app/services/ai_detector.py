@@ -11,7 +11,11 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load the single root .env — works both locally and in Docker (where env vars are injected directly).
+_ROOT_ENV = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".env"
+)
+load_dotenv(_ROOT_ENV)
 
 logger = logging.getLogger(__name__)
 

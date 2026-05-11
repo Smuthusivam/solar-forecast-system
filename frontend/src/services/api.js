@@ -71,27 +71,6 @@ export async function runForecast(sessionId, horizonHours = 24, trainSize = 80, 
 }
 
 // ─────────────────────────────────────────
-// 2b. START FORECAST JOB (ASYNC)
-// ─────────────────────────────────────────
-export async function startForecastJob(sessionId, horizonHours = 24, trainSize = 80, skipFuture = false) {
-  const response = await API.post("/api/forecast/start", {
-    session_id: sessionId,
-    horizon: horizonHours,
-    train_size: trainSize,
-    skip_future: skipFuture,
-  });
-  return response.data;
-}
-
-// ─────────────────────────────────────────
-// 2c. GET FORECAST JOB STATUS
-// ─────────────────────────────────────────
-export async function getForecastJobStatus(sessionId) {
-  const response = await API.get(`/api/status/${sessionId}`);
-  return response.data;
-}
-
-// ─────────────────────────────────────────
 // 3. GET ANOMALIES
 // ─────────────────────────────────────────
 export async function getAnomalies(sessionId) {
@@ -123,10 +102,6 @@ export async function exportCSV(sessionId) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-}
-
-export function getCorrectedCSVUrl(correctionId) {
-  return `${API_BASE_URL}/api/correction/export/${correctionId}`;
 }
 
 // Build and download a before-vs-after comparison CSV from correction result data.

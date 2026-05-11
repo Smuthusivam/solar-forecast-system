@@ -12,7 +12,7 @@ from datetime import datetime
 
 import pytest
 
-from app.database import (
+from app.crud import (
     get_all_runs,
     get_forecast_points_by_run_id,
     get_run_by_id,

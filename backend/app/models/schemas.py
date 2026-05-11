@@ -152,6 +152,7 @@ class ForecastResponse(BaseModel):
     forecast:           list[ForecastPoint]
     future_forecast:    list[ForecastPoint] = Field(default_factory=list, description="True future predictions beyond last known data point")
     metrics:            ModelMetrics
+    rows_processed:     int = Field(0, description="Number of training data points used")
     models_info:        list[PerModelInfo] = Field(default_factory=list)
     feature_importance: Optional[dict[str, float]] = None
     created_at:         datetime = Field(default_factory=datetime.utcnow)

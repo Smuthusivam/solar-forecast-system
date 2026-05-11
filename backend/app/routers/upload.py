@@ -14,9 +14,9 @@ from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session
 
-from app.database import get_db, save_dataset
+from app.database import get_db_dep
+from app.crud import save_dataset
 from app.models.schemas import DetectedColumns, DetectionMode, UploadResponse
 from app.services.ai_detector import detect_columns
 from ml_core.preprocessing import preprocess
@@ -124,7 +124,7 @@ def _purge_expired_sessions() -> None:
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_csv(file: UploadFile = File(...), db=Depends(get_db_dep)):
 
     if not file.filename.endswith(".csv"):
         raise HTTPException(

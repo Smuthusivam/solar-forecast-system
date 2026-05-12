@@ -682,6 +682,62 @@ export default function AnomalyReport({ datasetId }) {
               </div>
             )}
 
+            {/* Comprehensive metrics comparison table */}
+            {origMetrics && cmpMetrics && (
+              <Section
+                title="Error Metrics Comparison"
+                subtitle="Detailed before and after metrics with improvement percentages"
+              >
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Metric</th>
+                        <th className="px-4 py-3 text-right">Before</th>
+                        <th className="px-4 py-3 text-right">After</th>
+                        <th className="px-4 py-3 text-right">Change</th>
+                        <th className="px-4 py-3 text-right">% Change</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {[
+                        { name: "RMSE (W/m²)", orig: origMetrics.rmse, corr: cmpMetrics.rmse, lowerBetter: true },
+                        { name: "MAE (W/m²)", orig: origMetrics.mae, corr: cmpMetrics.mae, lowerBetter: true },
+                        { name: "R² Score", orig: origMetrics.r2, corr: cmpMetrics.r2, lowerBetter: false },
+                      ].map(({ name, orig, corr, lowerBetter }) => {
+                        const delta = corr - orig;
+                        const pctChange = orig !== 0 ? (delta / orig * 100).toFixed(2) : 0;
+                        const improved = lowerBetter ? delta < 0 : delta > 0;
+                        return (
+                          <tr key={name} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-semibold text-gray-700">{name}</td>
+                            <td className="px-4 py-3 text-right font-mono text-gray-600">{orig.toFixed(4)}</td>
+                            <td className="px-4 py-3 text-right font-mono font-semibold text-gray-600">{corr.toFixed(4)}</td>
+                            <td className={`px-4 py-3 text-right font-mono font-semibold ${improved ? "text-green-600" : "text-red-500"}`}>
+                              {delta > 0 ? "+" : ""}{delta.toFixed(4)}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-mono font-semibold ${improved ? "text-green-600" : "text-red-500"}`}>
+                              {pctChange > 0 ? "+" : ""}{pctChange}%
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
+                                improved
+                                  ? "bg-green-100 text-green-700 border border-green-300"
+                                  : "bg-red-100 text-red-600 border border-red-300"
+                              }`}>
+                                {improved ? "✓ Better" : "✗ Worse"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Section>
+            )}
+
             {/* Forecast comparison line chart */}
             {forecastCompareData.length > 0 && (
               <Section

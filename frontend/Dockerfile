@@ -28,6 +28,6 @@ RUN chmod +x /start.sh
 EXPOSE 80 443
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+    CMD wget -qO- --max-redirect=1 http://127.0.0.1/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1/assets/ >/dev/null 2>&1 || exit 1
 
 CMD ["/start.sh"]

@@ -46,11 +46,17 @@ def _train_model(Model, train_feat: pd.DataFrame, name: str):
     train_metrics = compute_all(y, train_preds)
     importance = model.get_feature_importance() if hasattr(model, "get_feature_importance") else {}
     logger.info("%s | TRAIN RMSE=%.2f R²=%.3f", name, train_metrics["rmse"], train_metrics["r2"])
-    return model, train_metrics, importance
+    return model, train_metrics, importance, feat_cols
 
 
-def _test_model(model, test_feat: pd.DataFrame, name: str):
-    feat_cols = get_feature_columns(test_feat)
+def _test_model(model, test_feat: pd.DataFrame, feat_cols: list, name: str):
+    # Use only columns that exist in test_feat; fill any missing lag columns with 0
+    missing = [c for c in feat_cols if c not in test_feat.columns]
+    if missing:
+        logger.warning("%s: test set missing columns %s — filling with 0", name, missing)
+        for c in missing:
+            test_feat = test_feat.copy()
+            test_feat[c] = 0.0
     X = test_feat[feat_cols]
     y = test_feat[TARGET_COL].values
     preds = np.clip(model.predict(X), 0, None)
@@ -75,6 +81,7 @@ def _build_future_forecast(
     col_map: dict,
     horizon: int,
     best_model,
+    feat_cols: list,
 ) -> list[dict]:
     """
     Iteratively forecast `horizon` future hours beyond the last row in df
@@ -86,7 +93,6 @@ def _build_future_forecast(
     working = df.iloc[-_LOOKBACK:].copy()
     last_ts = df.index[-1]
     future_points = []
-    feat_cols = None
 
     for step in range(1, horizon + 1):
         next_ts = last_ts + pd.Timedelta(hours=step)
@@ -98,8 +104,11 @@ def _build_future_forecast(
         working = pd.concat([working, new_row])
 
         feat_df = _build_features(working, col_map)
-        if feat_cols is None:
-            feat_cols = get_feature_columns(feat_df)
+
+        # Fill any lag columns the model was trained on but are missing here
+        missing = [c for c in feat_cols if c not in feat_df.columns]
+        for c in missing:
+            feat_df[c] = 0.0
 
         X_future = feat_df[feat_cols].iloc[[-1]]
         predicted = float(np.clip(best_model.predict(X_future), 0, None)[0])
@@ -144,13 +153,13 @@ def run_pipeline(
     test_feat  = _build_features(test_df,  col_map)
 
     logger.info("Training XGBoost...")
-    xgb_model,  xgb_train_metrics,  xgb_imp  = _train_model(XGBoostModel,  train_feat, "XGBoost")
+    xgb_model,  xgb_train_metrics,  xgb_imp,  feat_cols = _train_model(XGBoostModel,  train_feat, "XGBoost")
 
     logger.info("Training LightGBM...")
-    lgbm_model, lgbm_train_metrics, lgbm_imp = _train_model(LightGBMModel, train_feat, "LightGBM")
+    lgbm_model, lgbm_train_metrics, lgbm_imp, _         = _train_model(LightGBMModel, train_feat, "LightGBM")
 
-    xgb_preds,  xgb_metrics  = _test_model(xgb_model,  test_feat, "XGBoost")
-    lgbm_preds, lgbm_metrics = _test_model(lgbm_model, test_feat, "LightGBM")
+    xgb_preds,  xgb_metrics  = _test_model(xgb_model,  test_feat, feat_cols, "XGBoost")
+    lgbm_preds, lgbm_metrics = _test_model(lgbm_model, test_feat, feat_cols, "LightGBM")
 
     if xgb_metrics["rmse"] <= lgbm_metrics["rmse"]:
         best_model, best_preds, best_metrics, best_train_metrics, best_name = (
@@ -174,7 +183,7 @@ def run_pipeline(
         for i, ts in enumerate(test_df.index)
     ]
 
-    future_points = [] if skip_future else _build_future_forecast(df, col_map, horizon, best_model)
+    future_points = [] if skip_future else _build_future_forecast(df, col_map, horizon, best_model, feat_cols)
 
     feature_importance = _merge_importance(xgb_imp, lgbm_imp)
 

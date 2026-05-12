@@ -428,14 +428,6 @@ function Upload() {
                       value={(uploadStats.rows_dropped ?? 0).toLocaleString()}
                       color={(uploadStats.rows_dropped ?? 0) > 0 ? "text-orange-500" : "text-green-600"}
                       sub="bad timestamps / duplicates" />
-                    <StatCard label="Issues found"
-                      value={(
-                        (uploadStats.total_missing_cells ?? 0) +
-                        (uploadStats.clipped_count ?? 0) +
-                        (uploadStats.outlier_count ?? 0)
-                      ).toLocaleString()}
-                      color={(uploadStats.total_missing_cells ?? 0) + (uploadStats.clipped_count ?? 0) + (uploadStats.outlier_count ?? 0) > 0 ? "text-orange-500" : "text-green-600"}
-                      sub="missing + impossible + outliers" />
                   </div>
                 </Card>
 

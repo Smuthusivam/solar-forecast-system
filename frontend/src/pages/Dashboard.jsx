@@ -4,7 +4,7 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Area, ComposedChart
 } from "recharts";
-import { exportCSV } from "../services/api";
+import { exportCSV, exportFeaturesCSV } from "../services/api";
 import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { StatCard, Card, AlertBox, PageHeader } from "../components/ui";
 
@@ -19,15 +19,21 @@ function Dashboard() {
   
   // Use location state if available, otherwise fall back to saved state
   const { forecast, result, historyRun } = locationState.forecast ? locationState : (savedState || {});
+  const cachedTrainSize = locationState.trainSize ?? savedState?.trainSize ?? 80;
 
   const [exporting, setExporting] = useState(null);
 
   // Save state when it changes
   useEffect(() => {
     if (forecast && result) {
-      saveForecastState(forecast, result, result.filename);
+      saveForecastState(
+        forecast,
+        result,
+        result.filename,
+        cachedTrainSize,
+      );
     }
-  }, [forecast, result]);
+  }, [forecast, result, cachedTrainSize]);
 
   // ── Saved history summary mode (no full forecast arrays in DB) ─────────
   if (!forecast && historyRun) {
@@ -156,6 +162,17 @@ function Dashboard() {
     }
   }
 
+  async function handleExportFeatures() {
+    setExporting("features");
+    try {
+      await exportFeaturesCSV(result.session_id);
+    } catch (err) {
+      alert("Export failed: " + (err?.message || ""));
+    } finally {
+      setExporting(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
 
@@ -171,6 +188,14 @@ function Dashboard() {
             className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
           >
             {exporting === "csv" ? "Exporting..." : "Export CSV"}
+          </button>,
+          <button
+            key="features"
+            onClick={handleExportFeatures}
+            disabled={exporting !== null}
+            className="rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50"
+          >
+            {exporting === "features" ? "Exporting..." : "Export Features CSV"}
           </button>,
           <button
             key="models"

@@ -91,14 +91,27 @@ export async function getHistory() {
 // ─────────────────────────────────────────
 export async function exportCSV(sessionId) {
   const response = await API.get(`/api/export/csv?session_id=${sessionId}`, {
-    responseType: "blob", // important for file downloads
+    responseType: "blob",
   });
 
-  // Trigger browser download automatically
   const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement("a");
   link.href = url;
   link.setAttribute("download", "preprocessed_data.csv");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+export async function exportFeaturesCSV(sessionId) {
+  const response = await API.get(`/api/export/features?session_id=${sessionId}`, {
+    responseType: "blob",
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", "features.csv");
   document.body.appendChild(link);
   link.click();
   link.remove();

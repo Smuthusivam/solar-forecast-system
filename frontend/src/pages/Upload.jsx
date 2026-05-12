@@ -133,8 +133,8 @@ function Upload() {
       const forecastData = await runForecast(result.session_id, 24, trainSize, true);
       setForecast(forecastData);
       // Save to shared state for NavBar navigation
-      saveForecastState(forecastData, result, fileName || result.filename);
-      navigate("/dashboard", { state: { forecast: forecastData, result } });
+      saveForecastState(forecastData, result, fileName || result.filename, trainSize);
+      navigate("/dashboard", { state: { forecast: forecastData, result, trainSize } });
     } catch (err) {
       setError("Model run failed. Please try again.");
     } finally {

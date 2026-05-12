@@ -32,11 +32,14 @@ def add_lag_features(df: pd.DataFrame, target_col: str = "irradiance") -> pd.Dat
     # Add lagged irradiance values so the model can see what happened 1h, 24h, and 168h ago.
     df = df.copy()
 
-    # Only use lags that are likely to be populated given the dataset size.
-    # lag_168h (7 days) wipes out the first 168 rows on dropna() — skip it for small datasets.
+    # Only use lags that can be safely computed without excessive NaN loss.
+    # For datasets with < 400 rows, only use shorter lags to avoid losing data to dropna().
     lags = [1, 2, 24, 48, 168]
     if len(df) < 400:
         lags = [1, 2, 24]
+        if len(df) < 200:
+            lags = [1, 2, 24]  # Still try these; fillna(0) handles missing values
+    
     for lag in lags:
         df[f"lag_{lag}h"] = df[target_col].shift(lag).fillna(0)
 
@@ -123,8 +126,19 @@ def build_features(
     df = add_rolling_features(df, target_col=target_col)
     df = add_weather_features(df, col_map=col_map)
 
-    df = df.dropna()
-
+    # Only drop NA rows if we still have sufficient data; this prevents losing data
+    # when predicting on shorter sequences or corrected datasets.
+    rows_before = len(df)
+    na_count = df.isna().sum().sum()
+    
+    if na_count > 0:
+        rows_after_dropna = len(df.dropna())
+        # If dropna() removes >50% of rows, fillna instead (lag-induced NaNs)
+        if rows_after_dropna < max(1, rows_before * 0.5):
+            df = df.fillna(0)
+        else:
+            df = df.dropna()
+    
     return df
 
 

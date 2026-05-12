@@ -32,11 +32,11 @@ export default function Forecast() {
 
   const [selectedPreset, setSelectedPreset] = useState(24);
   const [customHours,    setCustomHours]    = useState(96);
-  const [trainSize,      setTrainSize]      = useState(80);
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState(null);
   const [result,         setResult]         = useState(null);
   const [activeTab,      setActiveTab]      = useState("chart");
+  const trainSize = location.state?.trainSize ?? savedState?.trainSize ?? 80;
 
   const horizon = selectedPreset === 0 ? customHours : selectedPreset;
 
@@ -141,13 +141,6 @@ export default function Forecast() {
           >
             Open Anomaly
           </button>,
-          <button
-            key="back"
-            onClick={() => navigate(-1)}
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            Back
-          </button>,
         ]}
       />
 
@@ -195,28 +188,6 @@ export default function Forecast() {
               <span className="text-sm text-slate-500">hours (max 8760 = 1 year)</span>
             </div>
           )}
-        </div>
-
-        {/* Train size slider */}
-        <div>
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-2">
-            Training Data — <span className="font-semibold text-slate-900">{trainSize}%</span>
-            <span className="ml-2 font-normal normal-case text-slate-400">
-              (more training = better model, less test data)
-            </span>
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="range" min={50} max={95} step={5}
-              value={trainSize}
-              onChange={e => setTrainSize(+e.target.value)}
-              className="flex-1 accent-slate-900"
-            />
-            <div className="flex gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Train {trainSize}%</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Test {100 - trainSize}%</span>
-            </div>
-          </div>
         </div>
 
         {/* Run button */}
@@ -393,7 +364,7 @@ export default function Forecast() {
               <div>
                 <h3 className="font-semibold text-gray-900">Model Performance on Test Set</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Evaluated on the held-out {100 - trainSize}% test split before generating future forecast
+                  Evaluated on a held-out test set before generating future forecast
                 </p>
               </div>
 

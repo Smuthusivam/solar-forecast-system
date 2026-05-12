@@ -3,9 +3,17 @@
 
 const STORAGE_KEY = "solar-forecast-state";
 
-export function saveForecastState(forecast, result, filename = "") {
+export function saveForecastState(forecast, result, filename = "", trainSize) {
   try {
-    const state = { forecast, result, filename, timestamp: Date.now() };
+    const existing = loadForecastState() || {};
+    const state = {
+      ...existing,
+      forecast,
+      result,
+      filename,
+      trainSize: typeof trainSize === "number" ? trainSize : existing.trainSize ?? 80,
+      timestamp: Date.now(),
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
     console.error("Failed to save forecast state:", err);

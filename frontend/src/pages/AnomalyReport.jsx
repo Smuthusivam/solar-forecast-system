@@ -33,6 +33,7 @@ export default function AnomalyReport({ datasetId }) {
   const sessionId = datasetId || routeSessionId || savedState?.result?.session_id;
   const forecast = location.state?.forecast || savedState?.forecast;
   const result   = location.state?.result || savedState?.result;
+  const cachedTrainSize = savedState?.trainSize ?? 80;
 
   const [anomalies,         setAnomalies]         = useState([]);
   const [loadingAnomalies,  setLoadingAnomalies]  = useState(true);
@@ -83,9 +84,14 @@ export default function AnomalyReport({ datasetId }) {
 
   useEffect(() => {
     if (forecast && result) {
-      saveForecastState(forecast, result, result.filename);
+      saveForecastState(
+        forecast,
+        result,
+        result.filename,
+        cachedTrainSize,
+      );
     }
-  }, [forecast, result]);
+  }, [forecast, result, cachedTrainSize]);
 
   const handleRunCorrection = async () => {
     setLoadingCorrection(true);
@@ -240,11 +246,10 @@ export default function AnomalyReport({ datasetId }) {
 
       {/* Correction stats -- visible after correction runs */}
       {correctionResult && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           {[
-            { label: "Anomalies Found", value: correctionResult.anomaly_count,        color: "text-orange-600" },
-            { label: "AI Corrected",    value: stats?.ai_corrections,                 color: "text-purple-600" },
-            { label: "Interpolated",    value: stats?.interpolation_fallbacks,         color: "text-slate-500"  },
+            { label: "AI Corrected",  value: stats?.ai_corrections,        color: "text-purple-600" },
+            { label: "Interpolated",  value: stats?.interpolation_fallbacks, color: "text-slate-500"  },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <div className={`text-3xl font-bold ${color}`}>{value ?? 0}</div>

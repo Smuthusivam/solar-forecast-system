@@ -57,15 +57,21 @@ function ModelComparison() {
   
   // Use location state if available, otherwise fall back to saved state
   const { forecast, result } = locationState.forecast ? locationState : (savedState || {});
+  const cachedTrainSize = locationState.trainSize ?? savedState?.trainSize ?? 80;
 
   const [view, setView] = useState("test");   // "train" | "test" | "both"
 
   // Save state when it changes
   useEffect(() => {
     if (forecast && result) {
-      saveForecastState(forecast, result, result.filename);
+      saveForecastState(
+        forecast,
+        result,
+        result.filename,
+        cachedTrainSize,
+      );
     }
-  }, [forecast, result]);
+  }, [forecast, result, cachedTrainSize]);
 
   if (!forecast) {
     return (

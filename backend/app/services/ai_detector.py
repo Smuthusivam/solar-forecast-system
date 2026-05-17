@@ -35,27 +35,26 @@ COLUMN_ALIASES: dict[str, list[str]] = {
         "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
         "radiation", "rad", "shortwave_radiation", "sw_radiation",
         "global_radiation", "globalrad", "sr", "rs",
-        "dc_power", "ac_power", "power", "power_output", "solar_power",
-        "active_power", "generated_power",
     ],
     "temperature": [
         "temp", "temperature", "air_temperature", "tamb", "tmp",
         "temp_c", "temp_f", "ambient_temp", "t_air", "ta", "t2m",
-        "drybulb", "dry_bulb_temperature",
+        "drybulb", "dry_bulb_temperature", "dry_bulb",
     ],
     "humidity": [
         "humidity", "rh", "relative_humidity", "rhum", "hum",
         "specific_humidity", "dewpoint", "dew_point", "dp",
+        "relative_humidity_%", "rh_%",
     ],
     "wind_speed": [
         "wind_speed", "windspeed", "ws", "wind", "wind_spd",
         "wind_velocity", "wv", "wspd", "w_speed", "spd",
+        "wind_speed_m/s",
     ],
     "cloud_cover": [
         "cloud_cover", "cloudcover", "clouds", "cloud", "cc",
         "cloud_fraction", "oktas", "total_cloud_cover", "tcc",
-        "cloudiness", "nebulosity",
-        # Intentionally excludes "cloud_type" — it's a categorical code, not a percentage
+        "cloudiness", "nebulosity", "cloud_type", "cloudtype",
     ],
     "sunshine_hours": [
         "sunshine_hours", "sunshine", "sun_hours", "ssh",

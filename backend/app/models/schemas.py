@@ -111,7 +111,7 @@ class UploadResponse(BaseModel):
 class ForecastRequest(BaseModel):
     # Body sent by the frontend to POST /api/forecast/run.
     session_id:  str
-    horizon:     int  = Field(24, ge=1, le=8760, description="Forecast horizon in hours (1–8760)")
+    horizon:     int  = Field(24, ge=1, le=168,  description="Forecast horizon in hours (1–168, max 1 week)")
     train_size:  int  = Field(80, ge=50, le=95,  description="Training data percentage (50–95)")
     skip_future: bool = Field(False, description="Skip future forecast generation (model evaluation only)")
 

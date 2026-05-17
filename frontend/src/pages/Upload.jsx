@@ -130,7 +130,7 @@ function Upload() {
     setError(null);
 
     try {
-      const forecastData = await runForecast(result.session_id, 24, trainSize, true);
+      const forecastData = await runForecast(result.session_id, 24, trainSize, false);
       setForecast(forecastData);
       // Save to shared state for NavBar navigation
       saveForecastState(forecastData, result, fileName || result.filename, trainSize);
@@ -452,21 +452,6 @@ function Upload() {
                   </p>
                 </Card>
 
-                <Card title="Irradiance Summary"
-                  subtitle="Basic stats on the target variable">
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <StatCard label="Mean" value={uploadStats.irradiance_mean.toFixed(1)} unit="W/m²" color="text-blue-600" />
-                    <StatCard label="Min" value={uploadStats.irradiance_min.toFixed(1)} unit="W/m²" color="text-gray-500" />
-                    <StatCard label="Max" value={uploadStats.irradiance_max.toFixed(1)} unit="W/m²" color="text-orange-600" />
-                    <StatCard label="Detection"
-                      value="direct"
-                      color="text-green-600" sub="GHI source" />
-                    <StatCard label="Confidence"
-                      value={(result.confidence * 100).toFixed(0)}
-                      unit="%"
-                      color="text-indigo-600" sub="column mapping" />
-                  </div>
-                </Card>
 
                 <Card title="Planned Train / Test Split"
                   subtitle={`Time-aware ${trainSize}/${100 - trainSize} split — no shuffling to preserve temporal order`}>

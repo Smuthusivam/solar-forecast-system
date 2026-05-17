@@ -28,7 +28,7 @@ env/
 # ─────────────────────────────────────────────
 # ML — saved models and datasets
 # ─────────────────────────────────────────────
-ml_core/saved_models/*.pkl
+*.pkl
 ml_core/saved_models/*.json
 ml_core/saved_models/*.bin
 !ml_core/saved_models/.gitkeep

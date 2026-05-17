@@ -70,7 +70,6 @@ function Dashboard() {
               </span>
               <span className="text-xs text-gray-400">Horizon: {historyRun.horizon}h</span>
               <span className="text-xs text-gray-400">Rows: {historyRun.rows_processed.toLocaleString()}</span>
-              <span className="text-xs text-gray-400">Anomalies: {historyRun.anomaly_count}</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -226,7 +225,7 @@ function Dashboard() {
       </div>
 
       <Card title="Predicted vs Actual"
-        subtitle={`Daytime values only · Best model: ${forecast.best_model} · held-out test set with confidence intervals`}>
+        subtitle="Daytime values only · held-out test set with confidence intervals">
         <ResponsiveContainer width="100%" height={400}>
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

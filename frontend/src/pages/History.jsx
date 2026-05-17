@@ -67,11 +67,6 @@ function History() {
     }
   }
 
-  // Summary stats
-  const totalRuns = runs.length;
-  const avgR2     = runs.length ? runs.reduce((a, r) => a + r.r2, 0) / runs.length : 0;
-  const bestRun   = runs.length ? [...runs].sort((a, b) => b.r2 - a.r2)[0] : null;
-  const totalRows = runs.reduce((a, r) => a + r.rows_processed, 0);
 
   if (loading) {
     return (
@@ -99,22 +94,6 @@ function History() {
       />
 
       {error && <AlertBox>{error}</AlertBox>}
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Runs",         value: totalRuns,                   sub: "forecast sessions",    color: "text-slate-900" },
-          { label: "Avg R²",             value: avgR2.toFixed(4),            sub: "across all runs",      color: avgR2 > 0.9 ? "text-emerald-600" : "text-amber-600" },
-          { label: "Best R²",            value: bestRun ? bestRun.r2.toFixed(4) : "—", sub: bestRun ? bestRun.filename.slice(0, 18) : "no runs yet", color: "text-slate-900" },
-          { label: "Total Rows",         value: totalRows.toLocaleString(),  sub: "processed",            color: "text-slate-900" },
-        ].map(({ label, value, sub, color }) => (
-          <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">{label}</p>
-            <p className={`mt-2 text-2xl font-semibold ${color}`}>{value}</p>
-            <p className="mt-1 text-xs text-slate-500">{sub}</p>
-          </div>
-        ))}
-      </div>
 
       {/* Empty state */}
       {runs.length === 0 && !error && (
@@ -157,7 +136,6 @@ function History() {
                     { label: "MAE",        col: "mae",            align: "text-right"  },
                     { label: "R²",         col: "r2",             align: "text-right"  },
                     { label: "Rows",       col: "rows_processed", align: "text-right"  },
-                    { label: "Anomalies",  col: "anomaly_count",  align: "text-right"  },
                     { label: "Date",       col: "created_at",     align: "text-right"  },
                   ].map(({ label, col, align }) => (
                     <th key={col}
@@ -200,11 +178,6 @@ function History() {
                       <td className="p-3 text-right font-mono">{run.mae.toFixed(2)}</td>
                       <td className="p-3 text-right"><R2Badge value={run.r2} /></td>
                       <td className="p-3 text-right text-gray-600">{run.rows_processed.toLocaleString()}</td>
-                      <td className="p-3 text-right">
-                        <span className={run.anomaly_count > 200 ? "text-orange-500 font-medium" : "text-gray-600"}>
-                          {run.anomaly_count}
-                        </span>
-                      </td>
                       <td className="p-3 text-right text-gray-400 text-xs font-mono">
                         {new Date(run.created_at).toLocaleString()}
                       </td>
@@ -213,7 +186,7 @@ function History() {
                     {/* Inline detail panel */}
                     {expandedId === run.run_id && (
                       <tr key={`detail-${run.run_id}`}>
-                        <td colSpan={10} className="bg-slate-50 border-b border-slate-200 px-6 py-5">
+                        <td colSpan={9} className="bg-slate-50 border-b border-slate-200 px-6 py-5">
                           {!expandedData ? (
                             <div className="text-center text-slate-400 py-4">Loading run details...</div>
                           ) : (
@@ -269,13 +242,12 @@ function RunDetail({ run, points, navigate }) {
     <div className="space-y-5">
 
       {/* Metric + info row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "RMSE",      value: `${run.rmse.toFixed(2)} W/m²`, color: "text-blue-600"   },
           { label: "MAE",       value: `${run.mae.toFixed(2)} W/m²`,  color: "text-purple-600" },
           { label: "R²",        value: run.r2.toFixed(4),             color: run.r2 > 0.85 ? "text-green-600" : "text-orange-500" },
           { label: "Rows",      value: run.rows_processed.toLocaleString(), color: "text-slate-700" },
-          { label: "Anomalies", value: run.anomaly_count,             color: run.anomaly_count > 200 ? "text-orange-500" : "text-slate-700" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <div className={`text-xl font-bold ${color}`}>{value}</div>

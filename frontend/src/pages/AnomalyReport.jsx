@@ -223,33 +223,39 @@ export default function AnomalyReport({ datasetId }) {
       )}
 
       {/* Summary stat cards -- always visible once loaded */}
-      {!loadingAnomalies && !errorAnomalies && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-3xl font-bold text-orange-600">{anomalies.length}</div>
-            <div className="text-xs text-gray-500 mt-1">Total Anomalies</div>
+      {!loadingAnomalies && !errorAnomalies && (() => {
+        const correctedTs = new Set((correction_log || []).map(c => c.timestamp));
+        const displayed   = correctionResult
+          ? anomalies.filter(a => correctedTs.has(a.timestamp))
+          : anomalies;
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-3xl font-bold text-orange-600">{displayed.length}</div>
+              <div className="text-xs text-gray-500 mt-1">Total Anomalies</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-3xl font-bold text-red-500">{displayed.filter(a => a.severity === "high").length}</div>
+              <div className="text-xs text-gray-500 mt-1">High Severity</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-3xl font-bold text-yellow-500">{displayed.filter(a => a.severity === "medium").length}</div>
+              <div className="text-xs text-gray-500 mt-1">Medium Severity</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-3xl font-bold text-blue-500">{displayed.filter(a => a.severity === "low").length}</div>
+              <div className="text-xs text-gray-500 mt-1">Low Severity</div>
+            </div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-3xl font-bold text-red-500">{anomalies.filter(a => a.severity === "high").length}</div>
-            <div className="text-xs text-gray-500 mt-1">High Severity</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-3xl font-bold text-yellow-500">{anomalies.filter(a => a.severity === "medium").length}</div>
-            <div className="text-xs text-gray-500 mt-1">Medium Severity</div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-3xl font-bold text-blue-500">{anomalies.filter(a => a.severity === "low").length}</div>
-            <div className="text-xs text-gray-500 mt-1">Low Severity</div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Correction stats -- visible after correction runs */}
       {correctionResult && (
         <div className="grid grid-cols-2 gap-4">
           {[
-            { label: "AI Corrected",  value: stats?.ai_corrections,        color: "text-purple-600" },
-            { label: "Interpolated",  value: stats?.interpolation_fallbacks, color: "text-slate-500"  },
+            { label: "AI Corrected", value: stats?.ai_corrections,          color: "text-purple-600" },
+            { label: "Interpolated", value: stats?.interpolation_fallbacks,  color: "text-slate-500"  },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <div className={`text-3xl font-bold ${color}`}>{value ?? 0}</div>
@@ -728,40 +734,6 @@ export default function AnomalyReport({ datasetId }) {
               </Section>
             )}
 
-            {/* Scatter: predicted vs actual — side by side */}
-            {(scatterOrig.length > 0 || scatterCorr.length > 0) && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Section title="Original: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="actual"    name="Actual"    unit=" W/m²" tick={{ fontSize: 10 }}
-                        label={{ value: "Actual",    position: "insideBottom", offset: -4, fontSize: 11 }} />
-                      <YAxis dataKey="predicted" name="Predicted" unit=" W/m²" tick={{ fontSize: 10 }}
-                        label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                      <ZAxis range={[20, 20]} />
-                      <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} W/m²`]} />
-                      <Scatter data={scatterOrig} fill="#f97316" fillOpacity={0.5} name="Original" />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </Section>
-
-                <Section title="Corrected: Predicted vs Actual" subtitle="Points close to the diagonal = accurate">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="actual"    name="Actual"    unit=" W/m²" tick={{ fontSize: 10 }}
-                        label={{ value: "Actual",    position: "insideBottom", offset: -4, fontSize: 11 }} />
-                      <YAxis dataKey="predicted" name="Predicted" unit=" W/m²" tick={{ fontSize: 10 }}
-                        label={{ value: "Predicted", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                      <ZAxis range={[20, 20]} />
-                      <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} W/m²`]} />
-                      <Scatter data={scatterCorr} fill="#8b5cf6" fillOpacity={0.5} name="Corrected" />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </Section>
-              </div>
-            )}
 
             {/* Per-model RMSE / MAE bar charts */}
             {modelBarData.length > 0 && cmpModels.length > 0 && (

@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  AreaChart, Area, LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, ReferenceLine, Cell,
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { runForecast, runForecastFromCorrected } from "../services/api";
 import { saveForecastState, loadForecastState } from "../services/forecastState";
@@ -13,11 +13,10 @@ import { StatCard, TabNav, PageHeader } from "../components/ui";
 
 // ── Preset horizon options ────────────────────────────────────────────────────
 const PRESETS = [
-  { label: "24 h",   value: 24,  desc: "Next day"  },
-  { label: "48 h",   value: 48,  desc: "2 days"    },
-  { label: "72 h",   value: 72,  desc: "3 days"    },
-  { label: "1 week", value: 168, desc: "7 days"    },
-  { label: "Custom", value: 0,   desc: "Set hours"  },
+  { label: "24 h",   value: 24,  desc: "Next day" },
+  { label: "48 h",   value: 48,  desc: "2 days"   },
+  { label: "72 h",   value: 72,  desc: "3 days"   },
+  { label: "1 week", value: 168, desc: "7 days"   },
 ];
 
 export default function Forecast() {
@@ -26,27 +25,37 @@ export default function Forecast() {
   const savedState = loadForecastState();
   
   const sessionId           = location.state?.sessionId || location.state?.result?.session_id || savedState?.result?.session_id;
-  const correctionSessionId = location.state?.correctionSessionId;
+  const correctionSessionId = location.state?.correctionSessionId ?? savedState?.correctionSessionId ?? null;
   const fromCorrection      = location.state?.fromCorrection || false;
   const filename            = location.state?.filename || location.state?.result?.filename || savedState?.filename || "dataset";
 
   const [selectedPreset, setSelectedPreset] = useState(24);
-  const [customHours,    setCustomHours]    = useState(96);
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState(null);
   const [result,         setResult]         = useState(null);
   const [activeTab,      setActiveTab]      = useState("chart");
   const trainSize = location.state?.trainSize ?? savedState?.trainSize ?? 80;
 
-  const horizon = selectedPreset === 0 ? customHours : selectedPreset;
+  // Persist correctionSessionId to localStorage so it survives navigation
+  useEffect(() => {
+    if (correctionSessionId) {
+      saveForecastState(
+        savedState?.forecast,
+        savedState?.result,
+        savedState?.filename,
+        trainSize,
+        correctionSessionId,
+      );
+    }
+  }, [correctionSessionId]);
+
+  const horizon = selectedPreset;
 
   const handleRun = async () => {
-    if (!sessionId && !correctionSessionId) { setError("No session found. Upload a CSV first."); return; }
+    if (!correctionSessionId) { setError("No corrected dataset found. Please run AI correction first from the Anomaly page."); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const res = correctionSessionId
-        ? await runForecastFromCorrected(correctionSessionId, horizon, trainSize)
-        : await runForecast(sessionId, horizon, trainSize);
+      const res = await runForecastFromCorrected(correctionSessionId, horizon, trainSize);
       setResult(res);
       setActiveTab("chart");
     } catch (e) {
@@ -65,9 +74,8 @@ export default function Forecast() {
     Forecast:  parseFloat(p.predicted?.toFixed(1)),
   }));
 
-  const peakPoint   = futurePoints.reduce((best, p) => p.predicted > (best?.predicted ?? -1) ? p : best, null);
-  const totalEnergy = futurePoints.reduce((s, p) => s + (p.predicted || 0), 0);
-  const nightHours  = futurePoints.filter(p => p.predicted === 0).length;
+  const peakPoint  = futurePoints.reduce((best, p) => p.predicted > (best?.predicted ?? -1) ? p : best, null);
+  const nightHours = futurePoints.filter(p => p.predicted === 0).length;
   const dayHours    = futurePoints.length - nightHours;
 
   // Hourly average from test set for the background reference curve
@@ -81,33 +89,9 @@ export default function Forecast() {
     return buckets.map((b, h) => ({ hour: h, avg: b.n ? +(b.sum / b.n).toFixed(1) : 0 }));
   })();
 
-  // Daily energy totals from the future forecast
-  const dailyEnergy = (() => {
-    const days = {};
-    futurePoints.forEach(p => {
-      const day = p.timestamp.substring(0, 10);
-      days[day] = (days[day] || 0) + p.predicted;
-    });
-    return Object.entries(days).map(([date, total]) => ({
-      date: date.substring(5),
-      energy: +(total / 1000).toFixed(3),
-    }));
-  })();
-
-  // Per-model comparison on test set
-  const modelData = (result?.models_info || []).map(m => ({
-    model:  m.model_name,
-    RMSE:   +m.metrics.rmse.toFixed(2),
-    MAE:    +m.metrics.mae.toFixed(2),
-    R2:     +m.metrics.r2.toFixed(4),
-    is_best: m.is_best,
-  }));
-
   const tabs = [
-    { id: "chart",  label: "Forecast Chart" },
-    { id: "daily",  label: "Daily Energy"   },
-    { id: "models", label: "Models"         },
-    { id: "table",  label: "Hourly Table"   },
+    { id: "chart", label: "Forecast Chart" },
+    { id: "table", label: "Hourly Table"   },
   ];
 
 
@@ -175,25 +159,12 @@ export default function Forecast() {
             ))}
           </div>
 
-          {/* Custom hours input */}
-          {selectedPreset === 0 && (
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                type="number"
-                min={1} max={8760}
-                value={customHours}
-                onChange={e => setCustomHours(Math.min(8760, Math.max(1, +e.target.value)))}
-                className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-              />
-              <span className="text-sm text-slate-500">hours (max 8760 = 1 year)</span>
-            </div>
-          )}
         </div>
 
         {/* Run button */}
         <button
           onClick={handleRun}
-          disabled={loading || (!sessionId && !correctionSessionId)}
+          disabled={loading || !correctionSessionId}
           className="flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
@@ -203,10 +174,11 @@ export default function Forecast() {
           )}
         </button>
 
-        {!sessionId && !correctionSessionId && (
+        {!correctionSessionId && (
           <p className="text-center text-xs text-rose-600">
-            No dataset session found.{" "}
-            <button onClick={() => navigate("/")} className="font-medium underline underline-offset-2">Upload a CSV first</button>.
+            No corrected dataset found. Please run AI correction from the{" "}
+            <button onClick={() => navigate("/anomalies")} className="font-medium underline underline-offset-2">Anomaly page</button>{" "}
+            first.
           </p>
         )}
 
@@ -221,28 +193,36 @@ export default function Forecast() {
       {result && (
         <>
           {/* Summary stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <StatCard label="Horizon" value={horizon} unit="h" color="text-blue-600" sub="hours forecasted" />
-            <StatCard label="Peak GHI" value={peakPoint?.predicted?.toFixed(1)} unit="W/m²"
+            <StatCard label="Peak GHI" value={peakPoint?.predicted?.toFixed(1) ?? "—"} unit="W/m²"
               color="text-orange-500"
               sub={peakPoint ? new Date(peakPoint.timestamp).toLocaleString() : "—"} />
-            <StatCard label="Total Energy" value={(totalEnergy / 1000).toFixed(2)} unit="kWh/m²"
-              color="text-green-600" sub="integrated irradiance" />
             <StatCard label="Daylight Hours" value={dayHours} unit={`/ ${futurePoints.length}`}
               color="text-purple-600" sub="non-zero predicted hours" />
           </div>
 
-          {/* Model accuracy on test set */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="RMSE" value={result.metrics.rmse.toFixed(2)} unit="W/m²"
-              color="text-blue-600" sub={`${result.best_model} · test set`} />
-            <StatCard label="MAE"  value={result.metrics.mae.toFixed(2)}  unit="W/m²"
-              color="text-purple-600" sub={`${result.best_model} · test set`} />
-            <StatCard label="R²"   value={result.metrics.r2.toFixed(4)}
-              color={result.metrics.r2 > 0.85 ? "text-green-600" : "text-orange-500"}
-              sub={result.metrics.r2 > 0.85 ? "excellent fit" : "moderate fit"} />
-            <StatCard label="Rows Used" value={result.rows_processed?.toLocaleString()}
-              color="text-gray-700" sub="training data points" />
+          {/* Best model results */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <p className="text-sm font-semibold text-gray-700 mb-3">
+              Best Model: <span className="text-blue-600">{result.best_model}</span>
+            </p>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-xl font-bold text-blue-600">{result.metrics.rmse.toFixed(2)}</div>
+                <div className="text-xs text-gray-400 mt-0.5">RMSE W/m²</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-purple-600">{result.metrics.mae.toFixed(2)}</div>
+                <div className="text-xs text-gray-400 mt-0.5">MAE W/m²</div>
+              </div>
+              <div>
+                <div className={`text-xl font-bold ${result.metrics.r2 > 0.85 ? "text-green-600" : "text-orange-500"}`}>
+                  {result.metrics.r2.toFixed(4)}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">R² Score</div>
+              </div>
+            </div>
           </div>
 
           <TabNav tabs={tabs} active={activeTab} onChange={setActiveTab} />
@@ -295,126 +275,6 @@ export default function Forecast() {
                       <Bar dataKey="avg" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Tab: Daily Energy ── */}
-          {activeTab === "daily" && (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
-              <div>
-                <h3 className="font-semibold text-gray-900">Daily Energy Yield</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Integrated irradiance per day (kWh/m²)</p>
-              </div>
-              {dailyEnergy.length === 0 ? (
-                <p className="text-gray-400 text-sm">Not enough data for daily breakdown.</p>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={dailyEnergy} barCategoryGap="30%">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} unit=" kWh/m²" />
-                      <Tooltip formatter={(v) => [`${v} kWh/m²`, "Energy"]} />
-                      <Bar dataKey="energy" radius={[6, 6, 0, 0]}>
-                        {dailyEnergy.map((_, i) => (
-                          <Cell key={i} fill={i % 2 === 0 ? "#3b82f6" : "#60a5fa"} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Date</th>
-                          <th className="px-4 py-2 text-right">Energy (kWh/m²)</th>
-                          <th className="px-4 py-2 text-left">Bar</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {dailyEnergy.map((d, i) => {
-                          const maxE = Math.max(...dailyEnergy.map(x => x.energy));
-                          return (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="px-4 py-2 font-mono text-xs">{d.date}</td>
-                              <td className="px-4 py-2 text-right font-semibold text-blue-600">{d.energy}</td>
-                              <td className="px-4 py-2">
-                                <div className="bg-gray-100 rounded-full h-2 w-40">
-                                  <div className="bg-blue-500 h-2 rounded-full"
-                                    style={{ width: `${(d.energy / maxE) * 100}%` }} />
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Tab: Models ── */}
-          {activeTab === "models" && (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
-              <div>
-                <h3 className="font-semibold text-gray-900">Model Performance on Test Set</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Evaluated on a held-out test set before generating future forecast
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {modelData.map(m => (
-                  <div key={m.model}
-                    className={`rounded-xl p-5 space-y-3 ${m.is_best ? "border-2 border-blue-400 bg-blue-50" : "border border-gray-200"}`}>
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-gray-800">{m.model}</h4>
-                      {m.is_best && (
-                        <span className="text-sm font-bold text-white bg-blue-600 px-3 py-1 rounded-full">
-                          Best
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div>
-                        <div className="text-lg font-bold text-blue-600">{m.RMSE}</div>
-                        <div className="text-xs text-gray-400">RMSE W/m²</div>
-                      </div>
-                      <div>
-                        <div className="text-lg font-bold text-purple-600">{m.MAE}</div>
-                        <div className="text-xs text-gray-400">MAE W/m²</div>
-                      </div>
-                      <div>
-                        <div className={`text-lg font-bold ${m.R2 > 0.85 ? "text-green-600" : "text-orange-500"}`}>{m.R2}</div>
-                        <div className="text-xs text-gray-400">R²</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {result.feature_importance && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-3">Top Feature Importances</h4>
-                  <div className="space-y-2">
-                    {Object.entries(result.feature_importance).slice(0, 10).map(([feat, score]) => (
-                      <div key={feat} className="flex items-center gap-3">
-                        <span className="text-sm text-gray-600 w-36 truncate">{feat}</span>
-                        <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-                          <div className="bg-blue-500 h-2.5 rounded-full"
-                            style={{ width: `${(score * 100).toFixed(1)}%` }} />
-                        </div>
-                        <span className="text-xs text-gray-400 w-10 text-right">
-                          {(score * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>

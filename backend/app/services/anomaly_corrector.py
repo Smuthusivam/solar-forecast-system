@@ -180,10 +180,14 @@ async def _call_claude_batch(
                 raw = response.content[0].text
                 logger.debug("Sonnet batch(%d) raw (first 300): %s", len(batch), raw[:300])
                 return _parse_batch_response(raw, len(batch))
-            except anthropic.RateLimitError:
+            except anthropic.RateLimitError as exc:
                 wait = 4 ** attempt  # 1s, 4s, 16s
                 logger.warning("Rate limited — retry %d/3 in %ds", attempt + 1, wait)
                 await asyncio.sleep(wait)
+            except anthropic.InternalServerError as exc:
+                # API is down — no point retrying, fall back to interpolation immediately
+                logger.warning("Anthropic API server error — skipping retries, will interpolate")
+                break
             except Exception as exc:
                 logger.error("Sonnet batch call failed: %s", exc)
                 break

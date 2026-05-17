@@ -163,20 +163,6 @@ function ModelComparison() {
         ]}
       />
 
-      {/* Best model banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center gap-4">
-        <div>
-          <p className="font-semibold text-blue-800">
-            Best Individual Model on Test Set: {bestModel.model_name}
-          </p>
-          <p className="text-sm text-blue-600">
-            Test RMSE={bestModel.metrics.rmse.toFixed(2)} W/m² |
-            Test R²={bestModel.metrics.r2.toFixed(4)} |
-            {bestModel.train_metrics &&
-              ` Train R²=${bestModel.train_metrics.r2.toFixed(4)}`}
-          </p>
-        </div>
-      </div>
 
       {/* View selector */}
       <div className="mb-6 flex gap-2">

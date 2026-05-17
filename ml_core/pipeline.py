@@ -82,17 +82,18 @@ def _build_future_forecast(
     horizon: int,
     best_model,
     feat_cols: list,
+    residual_std: float = 0.0,
 ) -> list[dict]:
     """
     Iteratively forecast `horizon` future hours beyond the last row in df
     using the single best model (lowest test RMSE).
+    Confidence intervals widen with each step to reflect compounding uncertainty.
     """
-    # Keep only the tail needed for max lag (168h) + rolling windows (24h).
-    # This avoids rebuilding features on the full growing dataset each step.
     _LOOKBACK = 200
-    working = df.iloc[-_LOOKBACK:].copy()
-    last_ts = df.index[-1]
+    working   = df.iloc[-_LOOKBACK:].copy()
+    last_ts   = df.index[-1]
     future_points = []
+    z95 = 1.96
 
     for step in range(1, horizon + 1):
         next_ts = last_ts + pd.Timedelta(hours=step)
@@ -100,17 +101,14 @@ def _build_future_forecast(
         new_row = working.iloc[[-1]].copy()
         new_row.index = [next_ts]
         new_row[TARGET_COL] = 0.0
-
         working = pd.concat([working, new_row])
 
         feat_df = _build_features(working, col_map)
+        for c in feat_cols:
+            if c not in feat_df.columns:
+                feat_df[c] = 0.0
 
-        # Fill any lag columns the model was trained on but are missing here
-        missing = [c for c in feat_cols if c not in feat_df.columns]
-        for c in missing:
-            feat_df[c] = 0.0
-
-        X_future = feat_df[feat_cols].iloc[[-1]]
+        X_future  = feat_df[feat_cols].iloc[[-1]]
         predicted = float(np.clip(best_model.predict(X_future), 0, None)[0])
 
         if next_ts.hour < 5 or next_ts.hour >= 21:
@@ -118,12 +116,17 @@ def _build_future_forecast(
 
         working.at[next_ts, TARGET_COL] = predicted
 
+        # Uncertainty grows with forecast horizon — scale std by sqrt(step)
+        interval = z95 * residual_std * float(np.sqrt(step))
+        lower    = round(max(0.0, predicted - interval), 4)
+        upper    = round(predicted + interval, 4)
+
         future_points.append({
             "timestamp": next_ts.isoformat(),
             "predicted": round(predicted, 4),
             "actual":    None,
-            "lower":     None,
-            "upper":     None,
+            "lower":     lower if residual_std > 0 else None,
+            "upper":     upper if residual_std > 0 else None,
         })
 
     logger.info("Future forecast: %d hourly points from %s", horizon, last_ts + pd.Timedelta(hours=1))
@@ -172,18 +175,26 @@ def run_pipeline(
     logger.info("Best model: %s | RMSE=%.2f  R²=%.3f", best_name, best_metrics["rmse"], best_metrics["r2"])
 
     actuals = test_df[TARGET_COL].values
+
+    # Compute residual std from test set — used for confidence intervals
+    residuals   = actuals - best_preds
+    residual_std = float(np.std(residuals))
+    z95          = 1.96  # 95% confidence interval
+
     forecast_points = [
         {
             "timestamp": ts.isoformat(),
             "predicted": round(float(best_preds[i]), 4),
             "actual":    round(float(actuals[i]), 4),
-            "lower":     None,
-            "upper":     None,
+            "lower":     round(max(0.0, float(best_preds[i]) - z95 * residual_std), 4),
+            "upper":     round(float(best_preds[i]) + z95 * residual_std, 4),
         }
         for i, ts in enumerate(test_df.index)
     ]
 
-    future_points = [] if skip_future else _build_future_forecast(df, col_map, horizon, best_model, feat_cols)
+    future_points = [] if skip_future else _build_future_forecast(
+        df, col_map, horizon, best_model, feat_cols, residual_std
+    )
 
     feature_importance = _merge_importance(xgb_imp, lgbm_imp)
 

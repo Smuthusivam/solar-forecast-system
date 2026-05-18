@@ -112,7 +112,7 @@ async def run_forecast_from_corrected(
     train_size: int = 80,
     db=Depends(get_db_dep),
 ):
-    """Run the ML forecast pipeline on the AI-corrected dataframe and save to DB."""
+    """Run the ML forecast pipeline on the AI-corrected dataframe."""
     session = _read_correction(correction_session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Correction session not found or has expired. Please rerun correction.")
@@ -164,12 +164,8 @@ async def run_forecast_from_corrected(
         )
         run_id = db_run.run_id
         logger.info("Corrected forecast run saved to DB: run_id=%d", run_id)
-        try:
-            save_forecast_points(db, run_id, result["forecast"], is_future=False)
-            if result.get("future_forecast"):
-                save_forecast_points(db, run_id, result["future_forecast"], is_future=True)
-        except Exception as exc:
-            logger.error("Forecast points save failed (non-fatal): %s", exc)
+        if result.get("future_forecast"):
+            save_forecast_points(db, run_id, result["future_forecast"], is_future=True)
     except Exception as exc:
         logger.error("DB save failed (non-fatal): %s", exc)
         run_id = -1

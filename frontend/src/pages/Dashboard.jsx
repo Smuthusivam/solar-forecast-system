@@ -178,7 +178,7 @@ function Dashboard() {
       {/* ─── Header ─────────────────────────────────────────────────── */}
       <PageHeader
         title="Forecast Dashboard"
-        subtitle={`${result?.filename} — Run #${forecast.run_id} — Direct GHI`}
+        subtitle={`${result?.filename} — Best Model: ${forecast.best_model} — Run #${forecast.run_id}`}
         actions={[
           <button
             key="csv"

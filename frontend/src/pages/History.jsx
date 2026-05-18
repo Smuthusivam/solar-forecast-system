@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer,
+  ResponsiveContainer,
 } from "recharts";
 import { getHistory, getForecastPoints } from "../services/api";
 import { R2Badge, AlertBox, PageHeader } from "../components/ui";
@@ -46,7 +46,6 @@ function History() {
   }
 
   async function handleRowClick(run) {
-    // Collapse if already open
     if (expandedId === run.run_id) {
       setExpandedId(null);
       setExpandedData(null);
@@ -218,17 +217,7 @@ function History() {
 // -- Inline detail panel -------------------------------------------------------
 
 function RunDetail({ run, points, navigate }) {
-  const testPoints   = points.filter(p => !p.is_future);
-  const futurePoints = points.filter(p =>  p.is_future);
-
-  const step = Math.max(1, Math.floor(testPoints.length / 150));
-  const chartData = testPoints
-    .filter((_, i) => i % step === 0)
-    .map(p => ({
-      time:      p.timestamp.substring(5, 16).replace("T", " "),
-      Predicted: p.predicted != null ? parseFloat(p.predicted.toFixed(1)) : null,
-      Actual:    p.actual    != null ? parseFloat(p.actual.toFixed(1))    : null,
-    }));
+  const futurePoints = points.filter(p => p.is_future);
 
   const futureStep = Math.max(1, Math.floor(futurePoints.length / 100));
   const futureChartData = futurePoints
@@ -239,15 +228,15 @@ function RunDetail({ run, points, navigate }) {
     }));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
-      {/* Metric + info row */}
+      {/* Metric cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "RMSE",      value: `${run.rmse.toFixed(2)} W/m²`, color: "text-blue-600"   },
-          { label: "MAE",       value: `${run.mae.toFixed(2)} W/m²`,  color: "text-purple-600" },
-          { label: "R²",        value: run.r2.toFixed(4),             color: run.r2 > 0.85 ? "text-green-600" : "text-orange-500" },
-          { label: "Rows",      value: run.rows_processed.toLocaleString(), color: "text-slate-700" },
+          { label: "RMSE", value: `${run.rmse.toFixed(2)} W/m²`, color: "text-blue-600"   },
+          { label: "MAE",  value: `${run.mae.toFixed(2)} W/m²`,  color: "text-purple-600" },
+          { label: "R²",   value: run.r2.toFixed(4),             color: run.r2 > 0.85 ? "text-green-600" : "text-orange-500" },
+          { label: "Rows", value: run.rows_processed.toLocaleString(), color: "text-slate-700" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <div className={`text-xl font-bold ${color}`}>{value}</div>
@@ -256,12 +245,16 @@ function RunDetail({ run, points, navigate }) {
         ))}
       </div>
 
+      {/* Info pills */}
       <div className="flex flex-wrap gap-2 text-xs text-gray-500">
         <span className="bg-white border border-gray-200 rounded-full px-3 py-1">
           Best model: <strong className="text-gray-700">{run.best_model || "—"}</strong>
         </span>
         <span className="bg-white border border-gray-200 rounded-full px-3 py-1">
           Horizon: <strong className="text-gray-700">{run.horizon}h</strong>
+        </span>
+        <span className="bg-white border border-gray-200 rounded-full px-3 py-1">
+          Mode: <strong className="text-gray-700">{run.detection_mode}</strong>
         </span>
         <span className="bg-white border border-gray-200 rounded-full px-3 py-1">
           Saved: <strong className="text-gray-700">{new Date(run.created_at).toLocaleString()}</strong>
@@ -271,47 +264,36 @@ function RunDetail({ run, points, navigate }) {
         </span>
       </div>
 
-      {/* Predicted vs Actual chart */}
-      {chartData.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-sm font-semibold text-gray-700 mb-3">Predicted vs Actual — Test Set</p>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="time" tick={{ fontSize: 9 }}
-                interval={Math.floor(chartData.length / 8)} />
-              <YAxis tick={{ fontSize: 10 }} unit=" W/m²" />
-              <Tooltip contentStyle={{ fontSize: 11 }}
-                formatter={(v) => v != null ? [`${v} W/m²`] : ["—"]} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="Actual"    stroke="#10b981" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="Predicted" stroke="#3b82f6" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4 text-sm text-amber-800">
-          No chart data stored for this run. Upload the same CSV again to get the full chart.
-        </div>
-      )}
-
       {/* Future forecast chart */}
-      {futureChartData.length > 0 && (
+      {futureChartData.length > 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-sm font-semibold text-gray-700 mb-3">Future Forecast ({futurePoints.length}h ahead)</p>
-          <ResponsiveContainer width="100%" height={200}>
+          <p className="text-sm font-semibold text-gray-700 mb-3">
+            Future Forecast ({futurePoints.length}h ahead)
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
             <LineChart data={futureChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="time" tick={{ fontSize: 9 }}
                 interval={Math.floor(futureChartData.length / 8)} />
               <YAxis tick={{ fontSize: 10 }} unit=" W/m²" />
               <Tooltip contentStyle={{ fontSize: 11 }}
-                formatter={(v) => v != null ? [`${v} W/m²`] : ["—"]} />
+                formatter={(v) => v != null ? [`${v} W/m²`, "Forecast"] : ["—"]} />
               <Line type="monotone" dataKey="Forecast" stroke="#8b5cf6" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4 text-sm text-amber-800">
+          No forecast chart stored for this run. Upload the same CSV and run a forecast to generate it.
+        </div>
       )}
+
+      <button
+        onClick={() => navigate("/")}
+        className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+      >
+        Upload CSV to rerun →
+      </button>
 
     </div>
   );

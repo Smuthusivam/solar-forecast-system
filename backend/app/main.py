@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 APP_ENV = os.getenv("APP_ENV", "development")
 IS_DEV  = APP_ENV == "development"
 
-# Read allowed origins from env; default to Vite dev server
 _raw_origins = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:3000",
@@ -76,7 +75,6 @@ app = FastAPI(
     redoc_url= "/redoc",
     lifespan = lifespan,
 )
-
 # CORS must be added before routers
 app.add_middleware(
     CORSMiddleware,
@@ -102,11 +100,9 @@ async def log_requests(request: Request, call_next):
         duration,
     )
     return response
-
-
+# Return a consistent JSON error envelope instead of a raw 500 HTML page.
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Return a consistent JSON error envelope instead of a raw 500 HTML page.
     logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc)
     return JSONResponse(
         status_code=500,
@@ -128,7 +124,6 @@ app.include_router(export.router,   prefix="/api", tags=["Export"])
 
 @app.get("/health", tags=["System"])
 def health_check():
-    # Railway/Render ping this to confirm the service is alive.
     db_ok       = db_is_online()
     status_code = 200 if db_ok else 503
 
@@ -142,10 +137,9 @@ def health_check():
         },
     )
 
-
+# Sanity check endpoint — confirms the API is running after deployment.
 @app.get("/", tags=["System"])
 def root():
-    # Sanity check endpoint — confirms the API is running after deployment.
     return {
         "message": "Solar Irradiance Forecasting API is running.",
         "docs":    "/docs",

@@ -1,6 +1,4 @@
-# GET /api/export/csv         — download the preprocessed dataset as CSV.
-# GET /api/export/features    — download the feature-engineered dataset as CSV.
-
+# Fast API router for exporting preprocessed and feature-engineered datasets as CSV files.
 from __future__ import annotations
 
 import io
@@ -22,7 +20,6 @@ def export_csv(session_id: str):
     df       = session["df"]
     filename = session["filename"]
 
-    # Reset index so the timestamp column is included in the CSV
     export_df = df.reset_index()
 
     # Ensure timestamp is formatted as a clean ISO string without timezone offsets

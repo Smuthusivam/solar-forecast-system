@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+# Represents a forecast run with performance metrics and model configuration
 @dataclass
 class ForecastRun:
     run_id:         int
@@ -20,6 +21,7 @@ class ForecastRun:
     dataset_id:     int | None = None
     best_model:     str | None = None
 
+    # Return a readable string representation of the ForecastRun object
     def __repr__(self) -> str:
         return (
             f"<ForecastRun id={self.run_id} "

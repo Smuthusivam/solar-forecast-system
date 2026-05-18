@@ -1,4 +1,4 @@
-// AnomalyReport.jsx -- Full anomaly detection + AI correction + model comparison page
+// AnomalyReport.jsx
 
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -23,7 +23,7 @@ import {
   PageHeader, AlertBox,
 } from "../components/ui";
 
-// -- Main component -----------------------------------------------------------
+// Main component
 export default function AnomalyReport({ datasetId }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -73,7 +73,6 @@ export default function AnomalyReport({ datasetId }) {
 
     if (cached?.correctionResult) {
       setCorrectionResult(cached.correctionResult);
-      setComparisonResult(cached.comparisonResult || null);
       setActiveTab(cached.activeTab || "comparison");
     } else {
       setCorrectionResult(null);
@@ -113,12 +112,17 @@ export default function AnomalyReport({ datasetId }) {
         setLoadingComparison(false);
       }
 
-      writeAnomalyReportCache(sessionId, {
-        anomalies,
-        correctionResult: res,
-        comparisonResult: cmpResult,
-        activeTab: "comparison",
-      });
+      // Only cache lightweight data — comparisonResult has full forecast arrays
+      // that easily exceed the 5MB localStorage quota
+      try {
+        writeAnomalyReportCache(sessionId, {
+          anomalies,
+          correctionResult: res,
+          activeTab: "comparison",
+        });
+      } catch (_) {
+        // quota exceeded even without comparisonResult — skip caching silently
+      }
       setActiveTab("comparison");
     } catch (e) {
       setCorrectionError(e.response?.data?.detail || e.message);
@@ -127,7 +131,7 @@ export default function AnomalyReport({ datasetId }) {
     }
   };
 
-  // -- Derived chart data ------------------------------------------------------
+  // Derived chart data
 
   const timelineData = anomalies.slice(0, 80).map((a) => ({
     time:  new Date(a.timestamp).toLocaleDateString(),
@@ -158,7 +162,7 @@ export default function AnomalyReport({ datasetId }) {
     { source: "Interpolation",count: stats?.interpolation_fallbacks || 0, fill: "#94a3b8" },
   ];
 
-  // -- Tab config --------------------------------------------------------------
+  // Tab config
 
   const TABS = [
     { id: "detection",  label: "Detection" },
@@ -284,9 +288,6 @@ export default function AnomalyReport({ datasetId }) {
         ))}
       </div>
 
-      {/* ===================================================================
-          TAB: Detection
-      =================================================================== */}
       {activeTab === "detection" && (
         <div className="space-y-6">
           {loadingAnomalies ? (
@@ -410,9 +411,6 @@ export default function AnomalyReport({ datasetId }) {
         </div>
       )}
 
-      {/* ===================================================================
-          TAB: AI Correction
-      =================================================================== */}
       {activeTab === "correction" && correctionResult && (
         <div className="space-y-6">
 
@@ -523,9 +521,7 @@ export default function AnomalyReport({ datasetId }) {
         </div>
       )}
 
-      {/* ===================================================================
-          TAB: Before & After
-      =================================================================== */}
+      {/* TAB: Before & After */}
       {activeTab === "comparison" && correctionResult && (() => {
         // Original forecast metrics come from location.state / savedState
         const origMetrics   = forecast?.metrics;

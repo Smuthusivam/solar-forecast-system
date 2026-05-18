@@ -1,4 +1,4 @@
-# POST /api/forecast/run.
+# FastAPI router for running the ML forecast pipeline on the original dataset 
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from ml_core.pipeline import run_pipeline
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
+## Endpoint to run the ML forecast pipeline on the original uploaded dataset.
 @router.post("/forecast/run", response_model=ForecastResponse, summary="Run Forecast on Original Data")
 def run_forecast(request: ForecastRequest, db=Depends(get_db_dep)):
     session        = get_session(request.session_id)

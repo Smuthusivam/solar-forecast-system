@@ -8,9 +8,6 @@ import { exportCSV, exportFeaturesCSV } from "../services/api";
 import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { StatCard, Card, AlertBox, PageHeader } from "../components/ui";
 
-// ─────────────────────────────────────────────────────────────────────────
-// Main Dashboard
-// ─────────────────────────────────────────────────────────────────────────
 function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -35,7 +32,7 @@ function Dashboard() {
     }
   }, [forecast, result, cachedTrainSize]);
 
-  // ── Saved history summary mode (no full forecast arrays in DB) ─────────
+  // Saved history summary mode (no full forecast arrays in DB)
   if (!forecast && historyRun) {
     const modeClass = "bg-green-100 text-green-700";
 
@@ -117,7 +114,6 @@ function Dashboard() {
     );
   }
 
-  // ── No data guard ──────────────────────────────────────────────────────
   if (!forecast) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
@@ -133,7 +129,7 @@ function Dashboard() {
   const em = forecast.metrics;
   const points = forecast.forecast;
 
-  // ── Forecast chart data (sampled) ──────────────────────────────────────
+  // Forecast chart data (sampled)
   const step = Math.max(1, Math.floor(points.length / 200));
   const chartData = points
     .filter((_, i) => i % step === 0)
@@ -149,7 +145,6 @@ function Dashboard() {
       };
     });
 
-  // ── Export handler ─────────────────────────────────────────────────────
   async function handleExportCSV() {
     setExporting("csv");
     try {
@@ -175,7 +170,6 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
 
-      {/* ─── Header ─────────────────────────────────────────────────── */}
       <PageHeader
         title="Forecast Dashboard"
         subtitle={`${result?.filename} — Best Model: ${forecast.best_model} — Run #${forecast.run_id}`}
@@ -213,7 +207,6 @@ function Dashboard() {
         ]}
       />
 
-      {/* ─── Top metrics row ────────────────────────────────────────── */}
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatCard label="RMSE" value={em.rmse.toFixed(2)} unit="W/m²"
           color="text-slate-900" sub="lower is better" />

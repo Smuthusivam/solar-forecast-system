@@ -9,7 +9,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
-# ── Enums ─────────────────────────────────────────────────────────────────────
+# Enums
 
 class DetectionMode(str, Enum):
     DIRECT = "direct"
@@ -39,10 +39,8 @@ class ConfidenceLevel(str, Enum):
     LOW    = "low"
 
 
-# ── Upload ────────────────────────────────────────────────────────────────────
-
+# Upload 
 class DetectedColumns(BaseModel):
-    # Every field is Optional because a given CSV may not have all physical variables.
     irradiance:     Optional[str] = Field(None, description="GHI column name in the raw CSV")
     temperature:    Optional[str] = None
     humidity:       Optional[str] = None
@@ -64,7 +62,6 @@ class ColumnQuality(BaseModel):
 
 
 class DataStats(BaseModel):
-    # Summary stats computed during preprocessing.
     rows_raw:          int
     rows_clean:        int
     rows_dropped:      int = 0
@@ -78,14 +75,14 @@ class DataStats(BaseModel):
     date_start:        str
     date_end:          str
     detection_mode:    Optional[str] = None
-    # Detailed quality metrics
+   
     duplicate_rows:      int = 0
     missing_hours:       int = 0
     total_missing_cells: int = 0
     clipped_count:       int = 0
     outlier_count:       int = 0
     column_quality:    list[ColumnQuality] = Field(default_factory=list)
-    # Pattern aggregates
+  
     hourly_avg:        list[float] = Field(default_factory=list)
     weekday_avg:       list[float] = Field(default_factory=list)
     monthly_avg:       list[float] = Field(default_factory=list)
@@ -93,7 +90,7 @@ class DataStats(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    # Returned right after upload; the frontend uses session_id for all follow-up calls.
+   
     session_id:       str   = Field(..., description="UUID identifying this upload session")
     filename:         str
     rows:             int   = Field(..., description="Number of data rows (excluding header)")
@@ -106,10 +103,9 @@ class UploadResponse(BaseModel):
     data_stats:       Optional[DataStats] = None
 
 
-# ── Forecast ──────────────────────────────────────────────────────────────────
-
+# Forecast 
 class ForecastRequest(BaseModel):
-    # Body sent by the frontend to POST /api/forecast/run.
+    
     session_id:  str
     horizon:     int  = Field(24, ge=1, le=168,  description="Forecast horizon in hours (1–168, max 1 week)")
     train_size:  int  = Field(80, ge=50, le=95,  description="Training data percentage (50–95)")
@@ -117,14 +113,14 @@ class ForecastRequest(BaseModel):
 
 
 class ModelMetrics(BaseModel):
-    # Evaluation metrics for one model on the held-out test set.
+   
     rmse: float = Field(..., description="Root Mean Square Error (W/m²)")
     mae:  float = Field(..., description="Mean Absolute Error (W/m²)")
     r2:   float = Field(..., description="Coefficient of Determination")
 
 
 class ForecastPoint(BaseModel):
-    # A single time-step in the forecast; actual is None for future predictions.
+   
     timestamp: datetime
     predicted: float           = Field(..., description="Predicted irradiance (W/m²)")
     actual:    Optional[float] = Field(None, description="Ground-truth value if available")
@@ -134,7 +130,7 @@ class ForecastPoint(BaseModel):
 
 class PerModelInfo(BaseModel):
     model_config = {"protected_namespaces": ()}
-    # Metrics for one individual model — used in Model Comparison page.
+    #
     model_name:    str
     predictions:   list[float]
     metrics:       ModelMetrics
@@ -143,7 +139,7 @@ class PerModelInfo(BaseModel):
 
 
 class ForecastResponse(BaseModel):
-    # Full response from POST /api/forecast/run.
+    
     session_id:         str
     run_id:             int  = Field(..., description="DB primary key (used in /history)")
     horizon:            int  = Field(..., description="Forecast horizon in hours")
@@ -158,10 +154,10 @@ class ForecastResponse(BaseModel):
     created_at:         datetime = Field(default_factory=datetime.utcnow)
 
 
-# ── Anomaly Detection ─────────────────────────────────────────────────────────
+# Anomaly Detection
 
 class AnomalyRecord(BaseModel):
-    # One detected anomaly in the irradiance series.
+   
     timestamp: datetime
     value:     float = Field(..., description="Observed irradiance (W/m²)")
     expected:  float = Field(..., description="Expected / rolling-mean value")
@@ -178,10 +174,9 @@ class AnomalyResponse(BaseModel):
     anomalies:     list[AnomalyRecord]
 
 
-# ── AI Correction ─────────────────────────────────────────────────────────────
+# AI Correction 
 
 class CorrectionEntry(BaseModel):
-    """One corrected data point — returned in the correction log."""
     timestamp:          str
     original_value:     float = Field(..., description="Raw sensor value that was flagged (W/m²)")
     corrected_value:    float = Field(..., description="AI- or rule-corrected replacement (W/m²)")
@@ -195,7 +190,6 @@ class CorrectionEntry(BaseModel):
 
 
 class CorrectionStats(BaseModel):
-    """Aggregate summary of a correction run."""
     total_corrected:            int
     ai_corrections:             int
     physics_rule_corrections:   int
@@ -208,7 +202,6 @@ class CorrectionStats(BaseModel):
 
 
 class MetricsDelta(BaseModel):
-    """Before/after comparison for a single metric (e.g. RMSE)."""
     original:        float
     corrected:       float
     delta:           float = Field(..., description="corrected − original")
@@ -217,36 +210,35 @@ class MetricsDelta(BaseModel):
 
 class CorrectionRunResponse(BaseModel):
     model_config = {"protected_namespaces": ()}
-    """Full response from POST /api/correction/run/{session_id}."""
+   
     session_id:          str
     correction_id:       str  = Field(..., description="UUID for this correction session (used in export)")
     anomaly_count:       int  = Field(..., description="Total anomalies detected before correction")
     anomalies_corrected: int  = Field(..., description="Number of points actually corrected")
     stats:               CorrectionStats
     correction_log:      list[CorrectionEntry]
-    # metrics_comparison keys are metric names: "rmse", "mae", "r2"
+   
     metrics_comparison:  dict[str, MetricsDelta] = Field(
         default_factory=dict,
         description="Metric deltas before/after correction — empty if pipeline was unavailable"
     )
-    # model_comparison: { "original": { "xgboost": ModelMetrics, ... }, "corrected": { ... } }
+   
     model_comparison:    dict[str, dict[str, ModelMetrics]] = Field(default_factory=dict)
     # forecasts: { "original": [...], "corrected": [...], "timestamps": [...] }
     forecasts:           dict[str, list] = Field(default_factory=dict)
 
 
 class CorrectionLogResponse(BaseModel):
-    """Response from GET /api/correction/log/{correction_id}."""
+    
     correction_id: str
     session_id:    str
     total:         int
     corrections:   list[CorrectionEntry]
 
 
-# ── History ───────────────────────────────────────────────────────────────────
-
+# History
 class ForecastRunSummary(BaseModel):
-    # One row in /history — lightweight metadata only, no full forecast arrays.
+   
     model_config = {"from_attributes": True}
 
     run_id:         int
@@ -268,10 +260,7 @@ class HistoryResponse(BaseModel):
     runs:       list[ForecastRunSummary]
 
 
-# ── Shared / Utility ──────────────────────────────────────────────────────────
-
 class ErrorDetail(BaseModel):
-    # Consistent error envelope for all endpoints — adds machine-readable code for the frontend.
     code:    str           = Field(..., description="Snake-case error code, e.g. 'column_not_found'")
     message: str
     field:   Optional[str] = Field(None, description="Which field caused the error, if any")

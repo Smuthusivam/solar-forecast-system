@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+# Represents a dataset object with metadata about uploaded files
 @dataclass
 class Dataset:
     dataset_id:     int

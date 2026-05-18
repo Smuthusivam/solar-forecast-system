@@ -1,4 +1,4 @@
-"""FastAPI router for anomaly detection."""
+# FastAPI router for anomaly detection.
 
 from __future__ import annotations
 
@@ -12,10 +12,9 @@ from ml_core.anomaly import detect_anomalies
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
+# Return detected anomalies for an uploaded session.
 @router.get("/anomaly")
 def get_anomalies(session_id: str):
-    """Return detected anomalies for an uploaded session."""
     session = get_session(session_id)
     df = session["df"]
 

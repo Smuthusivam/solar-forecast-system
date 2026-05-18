@@ -2,7 +2,7 @@
 
 import { NavLink } from "react-router-dom";
 
-// ── StatCard ──────────────────────────────────────────────────────────────────
+// StatCard
 export function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -16,7 +16,7 @@ export function StatCard({ label, value, unit, color = "text-gray-800", sub }) {
   );
 }
 
-// ── Card ──────────────────────────────────────────────────────────────────────
+// Card
 export function Card({ title, subtitle, children, right }) {
   return (
     <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -32,7 +32,7 @@ export function Card({ title, subtitle, children, right }) {
   );
 }
 
-// ── Section (border variant used in AnomalyReport / Forecast) ─────────────────
+// Section (border variant used in AnomalyReport / Forecast)
 export function Section({ title, subtitle, children, className = "" }) {
   return (
     <div className={`mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
@@ -45,7 +45,7 @@ export function Section({ title, subtitle, children, className = "" }) {
   );
 }
 
-// ── TabNav ────────────────────────────────────────────────────────────────────
+// TabNav
 export function TabNav({ tabs, active, onChange }) {
   return (
     <div className="mb-6 flex gap-1 border-b border-slate-200">
@@ -65,7 +65,7 @@ export function TabNav({ tabs, active, onChange }) {
   );
 }
 
-// ── AlertBox ──────────────────────────────────────────────────────────────────
+// AlertBox
 export function AlertBox({ children, variant = "error" }) {
   const styles = {
     error:   "border-red-200 bg-red-50 text-red-700",
@@ -79,7 +79,7 @@ export function AlertBox({ children, variant = "error" }) {
   );
 }
 
-// ── PageHeader ────────────────────────────────────────────────────────────────
+// PageHeader
 export function PageHeader({ title, subtitle, actions }) {
   return (
     <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 px-5 py-4 shadow-sm backdrop-blur">
@@ -95,7 +95,7 @@ export function PageHeader({ title, subtitle, actions }) {
   );
 }
 
-// ── Badges ────────────────────────────────────────────────────────────────────
+// Badges
 export function SeverityBadge({ severity }) {
   const colors = {
     high:   "bg-red-100 text-red-700 border border-red-300",
@@ -138,7 +138,7 @@ export function R2Badge({ value }) {
   return <span className="text-red-500 font-bold">{value.toFixed(4)}</span>;
 }
 
-// ── MetricCard (before/after comparison) ─────────────────────────────────────
+// MetricCard (before/after comparison)
 export function MetricCard({ label, original, corrected, higherIsBetter = false }) {
   const isImproved = higherIsBetter ? corrected > original : corrected < original;
   const pct = original !== 0 ? Math.abs((corrected - original) / original * 100) : 0;
@@ -157,10 +157,9 @@ export function MetricCard({ label, original, corrected, higherIsBetter = false 
   );
 }
 
-// ── Formatters ────────────────────────────────────────────────────────────────
 export const fmtWm2 = (v) => v != null ? [`${Number(v).toFixed(2)} W/m²`] : ["—"];
 
-// ── NavBar ───────────────────────────────────────────────────────────────────
+// NavBar
 export function NavBar() {
   const items = [
     { to: "/", label: "Upload" },

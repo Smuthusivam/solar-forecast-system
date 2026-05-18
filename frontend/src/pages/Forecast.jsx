@@ -11,7 +11,6 @@ import { runForecast, runForecastFromCorrected } from "../services/api";
 import { saveForecastState, loadForecastState } from "../services/forecastState";
 import { StatCard, TabNav, PageHeader } from "../components/ui";
 
-// ── Preset horizon options ────────────────────────────────────────────────────
 const PRESETS = [
   { label: "24 h",   value: 24,  desc: "Next day" },
   { label: "48 h",   value: 48,  desc: "2 days"   },
@@ -65,7 +64,6 @@ export default function Forecast() {
     }
   };
 
-  // ── Derived data ────────────────────────────────────────────────────────────
   const futurePoints = result?.future_forecast || [];
   const testPoints   = result?.forecast        || [];
 
@@ -134,7 +132,6 @@ export default function Forecast() {
         </div>
       )}
 
-      {/* ── Config panel ────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
         <h2 className="font-semibold text-gray-800">Forecast Settings</h2>
 
@@ -189,7 +186,6 @@ export default function Forecast() {
         )}
       </div>
 
-      {/* ── Results ─────────────────────────────────────────────────────────── */}
       {result && (
         <>
           {/* Summary stats */}
@@ -227,7 +223,6 @@ export default function Forecast() {
 
           <TabNav tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
-          {/* ── Tab: Forecast Chart ── */}
           {activeTab === "chart" && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
               <div>
@@ -280,7 +275,6 @@ export default function Forecast() {
             </div>
           )}
 
-          {/* ── Tab: Hourly Table ── */}
           {activeTab === "table" && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">

@@ -12,7 +12,6 @@ function Upload() {
   const navigate = useNavigate();
   const storageKey = "solar-forecast-upload-state";
 
-  // ── State ────────────────────────────────────────
   const [file, setFile]           = useState(null);
   const [dragging, setDragging]   = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -56,7 +55,6 @@ function Upload() {
     localStorage.removeItem(storageKey);
   }
 
-  // ── File picked from input ───────────────────────
   function handleFileChange(e) {
     const picked = e.target.files[0];
     if (!picked) return;
@@ -72,7 +70,6 @@ function Upload() {
     setError(null);
   }
 
-  // ── Drag and drop handlers ───────────────────────
   function handleDragOver(e) {
     e.preventDefault();
     setDragging(true);
@@ -97,7 +94,6 @@ function Upload() {
     }
   }
 
-  // ── Upload CSV to FastAPI ────────────────────────
   async function handleUpload() {
     if (!file) return;
     setUploading(true);
@@ -123,7 +119,7 @@ function Upload() {
     }
   }
 
-  // ── Run Models → evaluate on test set, then go to Dashboard ──────────────
+  // Run Models → evaluate on test set, then go to Dashboard
   async function handleRunForecast() {
     if (!result?.session_id) return;
     setRunning(true);
@@ -145,7 +141,6 @@ function Upload() {
   const points = forecast?.forecast ?? [];
   const uploadStats = result?.data_stats ?? null;
 
-  // ── Upload-level pattern aggregates ───────────────────────────────────
   const hourlyAvg = useMemo(() => {
     if (!uploadStats?.hourly_avg?.length) return [];
     return uploadStats.hourly_avg.map((avg, h) => ({
@@ -183,7 +178,6 @@ function Upload() {
     return rows.filter((_, i) => i % step === 0);
   }, [uploadStats]);
 
-  // ── UI ───────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
@@ -274,7 +268,7 @@ function Upload() {
         {/* Detection Result Card */}
         {result && (
           result.confidence < 0.70 ? (
-            /* ── Low confidence — invalid dataset, block everything ── */
+            /* Low confidence — invalid dataset, block everything */
             <div className="w-full bg-white rounded-xl shadow p-6 border-2 border-red-200">
               <div className="flex items-start gap-4">
                 <div className="text-4xl">⛔</div>
@@ -299,7 +293,7 @@ function Upload() {
               </div>
             </div>
           ) : (
-            /* ── Normal flow ── */
+            /* Normal flow */
             <div className="w-full bg-white rounded-xl shadow p-6">
 
               {/* Mode badge */}
@@ -412,7 +406,6 @@ function Upload() {
               onChange={setActiveTab}
             />
 
-            {/* ── Overview ───────────────────────────── */}
             {activeTab === "data" && (
               <>
                 <Card title="Dataset Overview"
@@ -473,7 +466,6 @@ function Upload() {
               </>
             )}
 
-            {/* ── Columns ───────────────────────────── */}
             {activeTab === "columns" && (
               <>
                 <Card title="Detected Column Mapping"
@@ -534,7 +526,6 @@ function Upload() {
               </>
             )}
 
-            {/* ── Data Quality ───────────────────────── */}
             {activeTab === "quality" && (
               <>
                 {/* Summary health cards */}
@@ -672,7 +663,6 @@ function Upload() {
               </>
             )}
 
-            {/* ── Patterns ───────────────────────────────── */}
             {activeTab === "patterns" && (
               <>
                 {!uploadStats && (

@@ -8,6 +8,7 @@ from app.models.forecast_point import ForecastPoint
 from app.models.forecast_run import ForecastRun
 
 
+ # Save a new forecast run to the database
 def save_forecast_run(conn: psycopg.Connection, **kwargs) -> ForecastRun:
     row = conn.execute(
         """
@@ -38,6 +39,7 @@ def save_forecast_run(conn: psycopg.Connection, **kwargs) -> ForecastRun:
     return ForecastRun(**row)
 
 
+ # Retrieve a forecast run by its ID
 def get_run_by_id(conn: psycopg.Connection, run_id: int) -> ForecastRun | None:
     row = conn.execute(
         "SELECT * FROM forecast_runs WHERE run_id = %s", (run_id,)
@@ -45,6 +47,7 @@ def get_run_by_id(conn: psycopg.Connection, run_id: int) -> ForecastRun | None:
     return ForecastRun(**row) if row else None
 
 
+ # Retrieve all forecast runs, limited by the specified number
 def get_all_runs(conn: psycopg.Connection, limit: int = 100) -> list[ForecastRun]:
     rows = conn.execute(
         "SELECT * FROM forecast_runs ORDER BY created_at DESC LIMIT %s", (limit,)
@@ -52,6 +55,7 @@ def get_all_runs(conn: psycopg.Connection, limit: int = 100) -> list[ForecastRun
     return [ForecastRun(**r) for r in rows]
 
 
+ # Save multiple forecast points for a given run
 def save_forecast_points(
     conn: psycopg.Connection,
     run_id: int,
@@ -84,6 +88,7 @@ def save_forecast_points(
     conn.commit()
 
 
+ # Retrieve all forecast points for a given run ID
 def get_forecast_points_by_run_id(
     conn: psycopg.Connection, run_id: int
 ) -> list[ForecastPoint]:

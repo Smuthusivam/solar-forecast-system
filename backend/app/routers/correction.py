@@ -1,9 +1,7 @@
-"""
-correction.py — FastAPI router
-Endpoints:
-  POST /api/correction/run/{dataset_id}   → detect + AI-correct + compare models
-  GET  /api/correction/log/{session_id}   → get correction log JSON
-"""
+
+# correction.py — FastAPI router
+
+
 
 import asyncio
 import os
@@ -47,15 +45,13 @@ def _read_correction(session_id: str) -> dict | None:
         logger.warning("Failed to load correction session %s: %s", session_id, exc)
         return None
 
-
+## called by uploader after proprocessing 
 def register_upload_session(dataset_id: str, df: pd.DataFrame, column_map: dict):
-    """Called by the upload router after preprocessing — no-op now since upload sessions are disk-backed."""
     pass
 
-
+# Load upload session from disk (shared across workers)
 @router.post("/run/{dataset_id}")
 async def run_correction(dataset_id: str):
-    # Load upload session from disk (shared across workers)
     try:
         upload_session = get_session(dataset_id)
     except HTTPException:
@@ -104,7 +100,7 @@ async def run_correction(dataset_id: str):
         "correction_log":     correction_log,
     }
 
-
+# Run the ML forecast pipeline on the AI-corrected dataframe.
 @router.post("/forecast/{correction_session_id}", summary="Run Forecast on AI-Corrected Data")
 async def run_forecast_from_corrected(
     correction_session_id: str,
@@ -112,7 +108,6 @@ async def run_forecast_from_corrected(
     train_size: int = 80,
     db=Depends(get_db_dep),
 ):
-    """Run the ML forecast pipeline on the AI-corrected dataframe."""
     session = _read_correction(correction_session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Correction session not found or has expired. Please rerun correction.")
@@ -198,6 +193,7 @@ async def run_forecast_from_corrected(
     }
 
 
+# Endpoint to retrieve the correction log for a given session ID.
 @router.get("/log/{session_id}")
 async def get_correction_log(session_id: str):
     session = _read_correction(session_id)

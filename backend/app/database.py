@@ -1,3 +1,4 @@
+# Database connection and initialization logic using psycopg and connection pooling.
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,6 @@ if not _DATABASE_URL:
         "postgresql://user:password@localhost:5432/solar_forecast"
     )
 
-# Railway uses the legacy "postgres://" scheme — psycopg needs "postgresql://"
 if _DATABASE_URL.startswith("postgres://"):
     _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
     logger.info("DATABASE_URL scheme corrected: postgres:// → postgresql://")

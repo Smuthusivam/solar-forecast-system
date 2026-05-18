@@ -1,4 +1,4 @@
-# POST /api/upload — parse CSV, detect columns via Claude AI, preprocess, store session.
+# FastAPI router for handling CSV uploads, column detection, and preprocessing.
 
 from __future__ import annotations
 
@@ -54,9 +54,8 @@ def _read_session(session_id: str) -> dict[str, Any] | None:
         logger.warning("Failed to load session %s: %s", session_id, exc)
         return None
 
-
+# Remove the session pickle and any exports tied to it.
 def _delete_session(session_id: str) -> None:
-    """Remove the session pickle and any exports tied to it."""
     try:
         os.remove(_session_path(session_id))
     except FileNotFoundError:
@@ -73,9 +72,8 @@ def _delete_session(session_id: str) -> None:
                 except OSError:
                     pass
 
-
-def get_session(session_id: str) -> dict[str, Any]:
     # Look up a session and raise 404/410 if missing or expired.
+def get_session(session_id: str) -> dict[str, Any]:
     session = _read_session(session_id)
 
     if not session:
@@ -100,10 +98,8 @@ def get_session(session_id: str) -> dict[str, Any]:
         )
 
     return session
-
-
+# Remove all artifacts (session, upload, exports) for sessions past their TTL.
 def _purge_expired_sessions() -> None:
-    # Remove all artifacts (session, upload, exports) for sessions past their TTL.
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         for fname in os.listdir(_SESSIONS_DIR):
@@ -122,7 +118,7 @@ def _purge_expired_sessions() -> None:
     except Exception as exc:
         logger.warning("Session purge failed: %s", exc)
 
-
+# router for uploading CSV, detecting columns, and preprocessing. Called by frontend when user uploads a file.
 @router.post("/upload", response_model=UploadResponse)
 async def upload_csv(file: UploadFile = File(...), db=Depends(get_db_dep)):
 
@@ -217,8 +213,6 @@ async def upload_csv(file: UploadFile = File(...), db=Depends(get_db_dep)):
     session_id = str(uuid.uuid4())
     file_hash  = hashlib.sha256(file_bytes).hexdigest()
 
-    # Strip None values from col_map — pipeline's add_weather_features skips missing keys,
-    # but a key present with None value causes it to look up df[None] and crash.
     clean_col_map = {k: v for k, v in detection["detected"].items() if v is not None}
 
     session_data = {

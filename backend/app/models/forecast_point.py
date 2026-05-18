@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+# Represents a single forecast point with predicted and actual values
 @dataclass
 class ForecastPoint:
     point_id:  int

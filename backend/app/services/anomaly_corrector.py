@@ -1,6 +1,6 @@
-"""
-anomaly_corrector.py — AI-powered anomaly correction using Claude Sonnet.
+# anomaly_corrector.py — AI-powered anomaly correction using Claude Sonnet.
 
+"""
 Pipeline per anomaly:
   1. Nighttime rule      — set to 0.0, no API call
   2. Plausibility check  — dismiss values close to neighbours
@@ -33,8 +33,7 @@ _MODEL         = "claude-sonnet-4-6"
 _MAX_TOKENS    = 2200  # 20 items × ~100 output tokens + buffer
 
 
-# ── Physical helpers ──────────────────────────────────────────────────────────
-
+# Physical helpers
 
 def _is_physically_plausible(value: float, ts, df: pd.DataFrame, idx: int) -> bool:
     """Return True if the value is reasonable and should NOT be corrected."""
@@ -62,9 +61,8 @@ def _is_physically_plausible(value: float, ts, df: pd.DataFrame, idx: int) -> bo
         return value == 0
     return abs(value - median) / median < 0.20
 
-
+# Linear interpolation from the nearest valid neighbours.
 def _interpolate(df: pd.DataFrame, idx: int) -> float:
-    """Linear interpolation from the nearest valid neighbours."""
     col_pos  = df.columns.get_loc("irradiance")
     prev_val = next_val = None
 
@@ -85,8 +83,7 @@ def _interpolate(df: pd.DataFrame, idx: int) -> float:
     return prev_val or next_val or 0.0
 
 
-# ── Batch Claude call ─────────────────────────────────────────────────────────
-
+# Batch Claude call 
 def _build_batch_prompt(batch: List[Dict]) -> str:
     items = json.dumps([
         {
@@ -111,10 +108,8 @@ def _build_batch_prompt(batch: List[Dict]) -> str:
         f"JSON only, no markdown."
     )
 
-
+# Parse Claude's JSON array response. Returns list of dicts (or None on failure).
 def _parse_batch_response(raw: str, batch_size: int) -> List[Dict | None]:
-    """Parse Claude's JSON array response. Returns list of dicts (or None on failure)."""
-    # Strip markdown fences
     raw = raw.strip()
     if "```" in raw:
         parts = raw.split("```")
@@ -163,7 +158,7 @@ def _parse_batch_response(raw: str, batch_size: int) -> List[Dict | None]:
     logger.warning("Could not parse Claude response — returning all None")
     return [None] * batch_size
 
-
+# calling concurrency with asyncio and semaphores to respect rate limits and overall timeout.
 async def _call_claude_batch(
     batch: List[Dict],
     semaphore: asyncio.Semaphore,
@@ -194,8 +189,7 @@ async def _call_claude_batch(
         return [None] * len(batch)
 
 
-# ── Main correction pipeline ──────────────────────────────────────────────────
-
+# Main correction pipeline 
 async def _correct_all_async(
     df: pd.DataFrame,
     anomalies: List[Dict],
@@ -213,7 +207,7 @@ async def _correct_all_async(
     ai_queue: List[Dict] = []
     dismissed = 0
 
-    # ── Pre-classify every anomaly ────────────────────────────────────────────
+    # Pre-classify every anomaly 
     for anomaly in anomalies:
         ts        = anomaly.get("timestamp")
         bad_value = float(anomaly.get("value", 0))
@@ -279,7 +273,7 @@ async def _correct_all_async(
         len(ai_queue),
     )
 
-    # ── Split into batches and fire concurrently ──────────────────────────────
+    # Split into batches and fire concurrently 
     if ai_queue:
         batches = [
             ai_queue[s: s + BATCH_SIZE]

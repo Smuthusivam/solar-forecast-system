@@ -1,4 +1,4 @@
-# GET /api/history and GET /api/history/{run_id}.
+# FastAPI router for retrieving forecast history.
 
 from __future__ import annotations
 
@@ -13,10 +13,9 @@ from app.models.schemas import ForecastRunSummary, HistoryResponse
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
+# Return all past forecast runs, newest first.
 @router.get("/history", response_model=HistoryResponse)
 def get_history(limit: int = 100, db=Depends(get_db_dep)):
-    """Return all past forecast runs, newest first."""
     runs = get_all_runs(db, limit=limit)
 
     return HistoryResponse(
@@ -24,10 +23,9 @@ def get_history(limit: int = 100, db=Depends(get_db_dep)):
         runs       = [ForecastRunSummary.model_validate(r) for r in runs],
     )
 
-
+# Return a single forecast run by ID.
 @router.get("/history/{run_id}", response_model=ForecastRunSummary)
 def get_run(run_id: int, db=Depends(get_db_dep)):
-    """Return a single forecast run by ID."""
     run = get_run_by_id(db, run_id)
 
     if not run:
@@ -42,10 +40,9 @@ def get_run(run_id: int, db=Depends(get_db_dep)):
 
     return ForecastRunSummary.model_validate(run)
 
-
+# Return all stored forecast points for a run (predicted vs actual + confidence bands).
 @router.get("/history/{run_id}/points")
 def get_run_points(run_id: int, db=Depends(get_db_dep)):
-    """Return all stored forecast points for a run (predicted vs actual + confidence bands)."""
     run = get_run_by_id(db, run_id)
     if not run:
         raise HTTPException(
@@ -61,7 +58,6 @@ def get_run_points(run_id: int, db=Depends(get_db_dep)):
             {
                 "timestamp": p.timestamp if isinstance(p.timestamp, str) else p.timestamp.isoformat(),
                 "predicted": p.predicted,
-                "actual":    p.actual,
                 "lower":     p.lower,
                 "upper":     p.upper,
                 "is_future": p.is_future,

@@ -158,9 +158,8 @@ def _call_claude_api(prompt: str) -> dict[str, Any]:
         logger.error("Claude returned non-JSON response: %s", raw_content[:200])
         raise ValueError(f"Claude API returned invalid JSON: {exc}") from exc
 
-
-def _alias_fallback(columns: list[str]) -> dict[str, Any]:
-    # Match columns against the alias dictionary; confidence scales with how many matched.
+# Match columns against the alias dictionary; confidence scales with how many matched.
+def _alias_fallback(columns: list[str]) -> dict[str, Any]: 
     def normalise(name: str) -> str:
         return re.sub(r"[\s\-_]+", "_", name.strip().lower())
 
@@ -185,13 +184,13 @@ def _alias_fallback(columns: list[str]) -> dict[str, Any]:
     logger.info("Alias fallback: matched %d/%d variables (confidence=%.2f)", matched, total, confidence)
     return result
 
-
+# Validate the raw mapping and build the final result dict for the upload router.
 def _build_result(
     mapping:       dict[str, Any],
     columns:       list[str],
     used_fallback: bool,
 ) -> dict[str, Any]:
-    # Validate the raw mapping and build the final result dict for the upload router.
+    
     warnings = []
     if used_fallback:
         warnings.append("Claude API unavailable — used alias-based detection as fallback")
@@ -254,12 +253,11 @@ def _build_result(
         "used_fallback":  used_fallback,
     }
 
-
+# Try Claude API first; fall back to alias matching on any failure.
 def detect_columns(
     columns:     list[str],
     sample_rows: list[dict],
 ) -> dict[str, Any]:
-    # Try Claude API first; fall back to alias matching on any failure.
     used_fallback = False
 
     try:

@@ -87,10 +87,8 @@ function ModelComparison() {
 
   const { models_info, forecast: points, metrics, feature_importance, best_model: bestModelName } = forecast;
 
-  // ── Best model on test ──────────────────────────────────────────────
   const bestModel = (models_info || []).find(m => m.is_best) || models_info?.[0];
 
-  // ── Time series chart data ──────────────────────────────────────────
   const step = Math.max(1, Math.floor(points.length / 150));
   const perModelChartData = points
     .filter((_, i) => i % step === 0)
@@ -107,7 +105,7 @@ function ModelComparison() {
       return row;
     });
 
-  // ── Residuals ─────────────────────────────────────────────────────────
+  // Residuals
   const residualData = points
     .filter((_, i) => i % step === 0)
     .map((p, i) => {
@@ -121,7 +119,7 @@ function ModelComparison() {
       return row;
     });
 
-  // ── Feature importance ────────────────────────────────────────────────
+  // Feature importance
   const featData = feature_importance
     ? Object.entries(feature_importance)
         .slice(0, 15)
@@ -131,7 +129,7 @@ function ModelComparison() {
         }))
     : [];
 
-  // ── Train vs Test gap chart data ─────────────────────────────────────
+  // Train vs Test gap chart data
   const gapData = (models_info || []).map(m => ({
     name:     m.model_name,
     "Train R²": m.train_metrics?.r2 ?? 0,

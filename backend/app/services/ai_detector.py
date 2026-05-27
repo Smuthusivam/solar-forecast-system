@@ -34,22 +34,22 @@ COLUMN_ALIASES: dict[str, list[str]] = {
         "ghi", "ghi_wm2", "global_horizontal_irradiance", "solar_radiation",
         "solar_irradiance", "irradiance", "irrad", "solarad", "solrad",
         "radiation", "rad", "shortwave_radiation", "sw_radiation",
-        "global_radiation", "globalrad", "sr", "rs",
+        "global_radiation", "globalrad", "sr", "rs","GHI",
     ],
     "temperature": [
         "temp", "temperature", "air_temperature", "tamb", "tmp",
         "temp_c", "temp_f", "ambient_temp", "t_air", "ta", "t2m",
-        "drybulb", "dry_bulb_temperature", "dry_bulb",
+        "drybulb", "dry_bulb_temperature", "dry_bulb", "Temperature", "t", "t_air_c", "t_air_f",
     ],
     "humidity": [
         "humidity", "rh", "relative_humidity", "rhum", "hum",
         "specific_humidity", "dewpoint", "dew_point", "dp",
-        "relative_humidity_%", "rh_%",
+        "relative_humidity_%", "rh_%","Relative Humidity"
     ],
     "wind_speed": [
         "wind_speed", "windspeed", "ws", "wind", "wind_spd",
         "wind_velocity", "wv", "wspd", "w_speed", "spd",
-        "wind_speed_m/s",
+        "wind_speed_m/s","Wind Speed"
     ],
     "cloud_cover": [
         "cloud_cover", "cloudcover", "clouds", "cloud", "cc",
@@ -63,7 +63,7 @@ COLUMN_ALIASES: dict[str, list[str]] = {
     "timestamp": [
         "timestamp", "datetime", "date_time", "time", "date",
         "dt", "ts", "utc", "local_time", "observation_time",
-        "valid_time", "period_end", "period_start",
+        "valid_time", "period_end", "period_start"," Date Time",
     ],
 }
 

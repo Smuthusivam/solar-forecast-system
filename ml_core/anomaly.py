@@ -47,9 +47,8 @@ _HOURLY_MAX_GHI = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Physical validation filters — applied AFTER statistical detection
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def _hourly_max(hour: int) -> float:
     return float(_HOURLY_MAX_GHI.get(hour, 900))
@@ -87,9 +86,8 @@ def _is_weather_coherent(value: float, ts: pd.Timestamp, df: pd.DataFrame) -> bo
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # Severity helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _severity_from_zscore(z: float) -> str:
     if abs(z) >= ZSCORE_HIGH:   return "high"
@@ -115,9 +113,7 @@ def _is_daytime(hour: int) -> bool:
     return DAYTIME_START <= hour <= DAYTIME_END
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Statistical detectors
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _detect_zscore(series: pd.Series) -> list[dict]:
     rolling_mean = series.rolling(window=ZSCORE_WINDOW, min_periods=3, center=True).mean()
@@ -219,9 +215,8 @@ def _detect_rolling(series: pd.Series) -> list[dict]:
     return anomalies
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Merge + physical filter pass
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def _merge_anomalies(all_anomalies: list[dict]) -> list[dict]:
     severity_rank = {"high": 3, "medium": 2, "low": 1}
@@ -310,9 +305,7 @@ def _apply_physical_filters(anomalies: list[dict], df: pd.DataFrame) -> list[dic
     return filtered
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Public entry point
-# ─────────────────────────────────────────────────────────────────────────────
 
 def detect_anomalies(df: pd.DataFrame) -> dict[str, Any]:
     try:

@@ -57,9 +57,9 @@ class TestSaveForecastRun:
 
     def test_sets_created_at_automatically(self, db_session):
         """created_at must be set to a recent datetime without the caller providing it."""
-        before = datetime.utcnow()
+        before = datetime.now()
         run    = save_forecast_run(db_session, session_id="s-3", **_RUN)
-        after  = datetime.utcnow()
+        after  = datetime.now()
         assert before <= run.created_at <= after
 
 

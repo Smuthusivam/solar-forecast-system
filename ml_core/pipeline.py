@@ -19,9 +19,8 @@ logger = logging.getLogger(__name__)
 TARGET_COL = "irradiance"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def _time_split(df: pd.DataFrame, test_size: float = 0.20):
     split_idx = int(len(df) * (1 - test_size))

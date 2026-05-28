@@ -71,9 +71,8 @@ def _merge_importance(a: dict, b: dict) -> dict:
     return dict(sorted({k: round(v / total, 4) for k, v in merged.items()}.items(), key=lambda x: x[1], reverse=True))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Future forecast generation
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def _build_future_forecast(
     df: pd.DataFrame,
@@ -132,9 +131,9 @@ def _build_future_forecast(
     return future_points
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # Public entry point
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def run_pipeline(
     df:             pd.DataFrame,

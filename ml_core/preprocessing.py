@@ -437,7 +437,7 @@ def preprocess(
     date_range_days = (df.index[-1] - df.index[0]).days + 1
     irr             = df["irradiance"]
 
-    # ── Pattern aggregates ────────────────────────────────────────────────────
+    # Pattern aggregates 
     hourly_avg = (
         irr.groupby(df.index.hour)
         .mean()
